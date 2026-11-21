@@ -51,10 +51,14 @@ ON CONFLICT (client_id) DO UPDATE
 SET document = excluded.document, fetched_at = excluded.fetched_at, expires_at = excluded.expires_at;
 
 -- name: OAuthClientHostSeen :one
--- OAuthClientHostSeen is whether any client of the host has been connected
--- before, for the consent page's first-use notice (A7).
+-- OAuthClientHostSeen is whether any client of the host identified by its
+-- metadata document has been connected before, for the consent page's
+-- first-use notice (A7) and its automatic error redirects (A26). A
+-- registered client's connection names its redirect's host, and counts for
+-- nothing here.
 SELECT EXISTS (
-    SELECT 1 FROM identity.oauth_connections WHERE client_host = @client_host AND activated_at IS NOT NULL
+    SELECT 1 FROM identity.oauth_connections
+    WHERE client_host = @client_host AND client_kind = 'metadata' AND activated_at IS NOT NULL
 )::boolean;
 
 -- name: InsertOAuthConnection :exec

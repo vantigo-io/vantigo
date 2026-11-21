@@ -57,10 +57,14 @@ func (s *server) GetIdentityIntegrationsByIdRequests(ctx context.Context, req ge
 		r := string(*p.Reason)
 		reason = &r
 	}
-	var key *uuid.UUID
+	var key, connection *uuid.UUID
 	if p.Key != nil {
 		k := *p.Key
 		key = &k
+	}
+	if p.Connection != nil {
+		c := *p.Connection
+		connection = &c
 	}
 
 	exists, err := s.q.IntegrationExists(ctx, req.Id)
@@ -71,19 +75,19 @@ func (s *server) GetIdentityIntegrationsByIdRequests(ctx context.Context, req ge
 		return refusalOr[gen.GetIdentityIntegrationsByIdRequestsResponseObject](integrationNotFound)
 	}
 	days, err := s.q.APIRequestDailyCounts(ctx, store.APIRequestDailyCountsParams{
-		IntegrationID: req.Id, FromAt: from, ToAt: to, KeyID: key, StatusClass: class, Reason: reason,
+		IntegrationID: req.Id, FromAt: from, ToAt: to, KeyID: key, ConnectionID: connection, StatusClass: class, Reason: reason,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("identity: read the request log's days: %w", err)
 	}
 	ops, err := s.q.APIRequestTopOperations(ctx, store.APIRequestTopOperationsParams{
-		IntegrationID: req.Id, FromAt: from, ToAt: to, KeyID: key, StatusClass: class, Reason: reason, Top: requestLogTopOperations,
+		IntegrationID: req.Id, FromAt: from, ToAt: to, KeyID: key, ConnectionID: connection, StatusClass: class, Reason: reason, Top: requestLogTopOperations,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("identity: read the request log's operations: %w", err)
 	}
 	latest, err := s.q.APIRequestsLatest(ctx, store.APIRequestsLatestParams{
-		IntegrationID: req.Id, FromAt: from, ToAt: to, KeyID: key, StatusClass: class, Reason: reason, Latest: requestLogLatest,
+		IntegrationID: req.Id, FromAt: from, ToAt: to, KeyID: key, ConnectionID: connection, StatusClass: class, Reason: reason, Latest: requestLogLatest,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("identity: read the request log's latest requests: %w", err)

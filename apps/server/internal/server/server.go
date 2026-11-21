@@ -94,11 +94,12 @@ func New(o Options) http.Handler {
 				o.Live.ServeHTTP(w, r)
 				return
 			}
-			// The OAuth token endpoint is ahead of the CSRF guard too (OAuth
-			// connections design A9): it reads no cookie, and a client that
-			// sends Origin must get RFC 6749's JSON, not the guard's 403.
-			// The composition serves it only while OAUTH_ENABLED is on.
-			if path == module.OAuthTokenPath {
+			// The OAuth token and revocation endpoints are ahead of the CSRF
+			// guard too (OAuth connections design A9): they read no cookie,
+			// and a client that sends Origin must get RFC 6749's JSON, not
+			// the guard's 403. The composition serves them only while
+			// OAUTH_ENABLED is on.
+			if path == module.OAuthTokenPath || path == module.OAuthRevokePath {
 				api.ServeHTTP(w, r)
 				return
 			}

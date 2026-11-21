@@ -30,6 +30,7 @@ sql:
       - ../db/migrations/00213_identity_brand_campaigns.sql
       - ../db/migrations/00217_identity_idempotency.sql
       - ../db/migrations/00218_identity_oauth.sql
+      - ../db/migrations/00219_identity_oauth_clients.sql
     queries: queries
     gen:
       go:

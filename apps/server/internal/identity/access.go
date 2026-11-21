@@ -106,6 +106,10 @@ type Access struct {
 	oauthNet   *oauthNetwork
 	oauthOnce  sync.Once
 	oauthFetch *oauthFetcher
+	// revalidations are the client document revalidations running in the
+	// background (oauth_revalidate.go), revalidating how many.
+	revalidations sync.WaitGroup
+	revalidating  atomic.Int32
 	// limiter counts the token endpoint's requests per client address (C15).
 	limiter *ratelimit.Limiter
 }

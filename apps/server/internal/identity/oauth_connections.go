@@ -22,6 +22,10 @@ import (
 
 var connectionNotFound = refuse(http.StatusNotFound, "not_found", "No such connection.", nil)
 
+// inactiveClientNotAllowed is why a connection is listed inactive while the
+// workspace's list of client hosts leaves its host out (C11).
+const inactiveClientNotAllowed = "client_not_allowed"
+
 // GetIdentityIntegrationsByIdConnections lists an integration's connected
 // apps: activated, unrevoked and unexpired, each active or inactive by its
 // authorizer (A17).
@@ -41,6 +45,10 @@ func (s *server) GetIdentityIntegrationsByIdConnections(ctx context.Context, req
 	if err != nil {
 		return nil, fmt.Errorf("identity: read whether SCIM is on: %w", err)
 	}
+	allowed, err := s.access.oauthClientHosts(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.q.ListIntegrationOAuthConnections(ctx, store.ListIntegrationOAuthConnectionsParams{
 		IntegrationID: req.Id, Now: s.deps.Clock(), ScimEnabled: sso.SCIM != nil,
 	})
@@ -50,9 +58,16 @@ func (s *server) GetIdentityIntegrationsByIdConnections(ctx context.Context, req
 	out := gen.IntegrationConnectionList{Connections: make([]gen.IntegrationConnection, 0, len(rows))}
 	for _, c := range rows {
 		status, reason := gen.IntegrationConnectionStatus("active"), (*string)(nil)
-		if !c.AuthorizerActive {
+		switch {
+		case !c.AuthorizerActive:
 			status = "inactive"
 			r := revokeReasonAuthorizerRemoved
+			reason = &r
+		case c.ClientKind == oauthClientKindMetadata && !clientHostAllowed(allowed, c.ClientHost):
+			// Its tokens work until they expire; it cannot renew them while
+			// the workspace's list of client hosts leaves its host out (C11).
+			status = "inactive"
+			r := inactiveClientNotAllowed
 			reason = &r
 		}
 		connected := c.ExpiresAt

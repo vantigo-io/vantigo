@@ -61,6 +61,7 @@ const (
 	revokeReasonAuthorizerRemoved   = "authorizer_removed"
 	revokeReasonCodeReplayed        = "code_replayed"
 	revokeReasonRefreshReused       = "refresh_reused"
+	revokeReasonRevokedByClient     = "revoked_by_client"
 )
 
 // The audit actions of a connection (C14, C18).
@@ -329,6 +330,10 @@ func (a *Access) refresh(r *http.Request, values url.Values) (tokenResponse, err
 	if err != nil {
 		return tokenResponse{}, fmt.Errorf("identity: read whether SCIM is on: %w", err)
 	}
+	allowed, err := a.oauthClientHosts(ctx)
+	if err != nil {
+		return tokenResponse{}, err
+	}
 	connectionID, err := a.q.GetOAuthRefreshTokenConnection(ctx, hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return tokenResponse{}, dead
@@ -338,6 +343,7 @@ func (a *Access) refresh(r *http.Request, values url.Values) (tokenResponse, err
 	}
 	var out tokenResponse
 	var refusal error
+	var refreshed store.IdentityOauthConnection
 	err = db.WithTx(ctx, a.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		now := a.now()
@@ -402,12 +408,20 @@ func (a *Access) refresh(r *http.Request, values url.Values) (tokenResponse, err
 			refusal = dead
 			return nil
 		}
+		// The workspace's list of client hosts is held at every refresh
+		// (C11): a connection whose host it no longer admits is not ended,
+		// and renews again once the host is listed.
+		if c.ClientKind == oauthClientKindMetadata && !clientHostAllowed(allowed, c.ClientHost) {
+			refusal = invalidGrant("This workspace no longer admits this client's host.")
+			return nil
+		}
 		// The token is spent, and whatever the connection holds unspent
 		// beside it is superseded: a connection never has two live ones.
 		if err := q.SpendOAuthRefreshTokens(ctx, store.SpendOAuthRefreshTokensParams{ConnectionID: c.ID, Now: now}); err != nil {
 			return fmt.Errorf("identity: spend the refresh tokens: %w", err)
 		}
 		out, err = issueTokens(ctx, q, c, hash, now)
+		refreshed = c
 		return err
 	})
 	if err != nil {
@@ -416,6 +430,9 @@ func (a *Access) refresh(r *http.Request, values url.Values) (tokenResponse, err
 	if refusal != nil {
 		return tokenResponse{}, refusal
 	}
+	// With the transaction over, the client's document is checked again
+	// once its cache has expired (A3), in the background.
+	a.revalidateAfterRefresh(ctx, refreshed)
 	return out, nil
 }
 

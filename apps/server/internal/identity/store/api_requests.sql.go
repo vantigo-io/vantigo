@@ -19,8 +19,9 @@ FROM identity.api_requests r
 WHERE r.integration_id = $1
   AND r.at >= $2::timestamptz AND r.at < $3::timestamptz
   AND ($4::uuid IS NULL OR r.key_id = $4::uuid)
-  AND ($5::int IS NULL OR r.status / 100 = $5::int)
-  AND ($6::text IS NULL OR r.reason = $6::text)
+  AND ($5::uuid IS NULL OR r.connection_id = $5::uuid)
+  AND ($6::int IS NULL OR r.status / 100 = $6::int)
+  AND ($7::text IS NULL OR r.reason = $7::text)
 GROUP BY 1, 2
 ORDER BY 1, 2
 `
@@ -30,6 +31,7 @@ type APIRequestDailyCountsParams struct {
 	FromAt        time.Time
 	ToAt          time.Time
 	KeyID         *uuid.UUID
+	ConnectionID  *uuid.UUID
 	StatusClass   *int32
 	Reason        *string
 }
@@ -48,6 +50,7 @@ func (q *Queries) APIRequestDailyCounts(ctx context.Context, arg APIRequestDaily
 		arg.FromAt,
 		arg.ToAt,
 		arg.KeyID,
+		arg.ConnectionID,
 		arg.StatusClass,
 		arg.Reason,
 	)
@@ -75,11 +78,12 @@ FROM identity.api_requests r
 WHERE r.integration_id = $1
   AND r.at >= $2::timestamptz AND r.at < $3::timestamptz
   AND ($4::uuid IS NULL OR r.key_id = $4::uuid)
-  AND ($5::int IS NULL OR r.status / 100 = $5::int)
-  AND ($6::text IS NULL OR r.reason = $6::text)
+  AND ($5::uuid IS NULL OR r.connection_id = $5::uuid)
+  AND ($6::int IS NULL OR r.status / 100 = $6::int)
+  AND ($7::text IS NULL OR r.reason = $7::text)
 GROUP BY r.operation_id
 ORDER BY requests DESC, r.operation_id
-LIMIT $7::int
+LIMIT $8::int
 `
 
 type APIRequestTopOperationsParams struct {
@@ -87,6 +91,7 @@ type APIRequestTopOperationsParams struct {
 	FromAt        time.Time
 	ToAt          time.Time
 	KeyID         *uuid.UUID
+	ConnectionID  *uuid.UUID
 	StatusClass   *int32
 	Reason        *string
 	Top           int32
@@ -105,6 +110,7 @@ func (q *Queries) APIRequestTopOperations(ctx context.Context, arg APIRequestTop
 		arg.FromAt,
 		arg.ToAt,
 		arg.KeyID,
+		arg.ConnectionID,
 		arg.StatusClass,
 		arg.Reason,
 		arg.Top,
@@ -136,10 +142,11 @@ LEFT JOIN identity.oauth_connections c ON c.id = r.connection_id
 WHERE r.integration_id = $1
   AND r.at >= $2::timestamptz AND r.at < $3::timestamptz
   AND ($4::uuid IS NULL OR r.key_id = $4::uuid)
-  AND ($5::int IS NULL OR r.status / 100 = $5::int)
-  AND ($6::text IS NULL OR r.reason = $6::text)
+  AND ($5::uuid IS NULL OR r.connection_id = $5::uuid)
+  AND ($6::int IS NULL OR r.status / 100 = $6::int)
+  AND ($7::text IS NULL OR r.reason = $7::text)
 ORDER BY r.at DESC
-LIMIT $7::int
+LIMIT $8::int
 `
 
 type APIRequestsLatestParams struct {
@@ -147,6 +154,7 @@ type APIRequestsLatestParams struct {
 	FromAt        time.Time
 	ToAt          time.Time
 	KeyID         *uuid.UUID
+	ConnectionID  *uuid.UUID
 	StatusClass   *int32
 	Reason        *string
 	Latest        int32
@@ -177,6 +185,7 @@ func (q *Queries) APIRequestsLatest(ctx context.Context, arg APIRequestsLatestPa
 		arg.FromAt,
 		arg.ToAt,
 		arg.KeyID,
+		arg.ConnectionID,
 		arg.StatusClass,
 		arg.Reason,
 		arg.Latest,

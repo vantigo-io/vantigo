@@ -82,6 +82,13 @@ func (o *OAuthClientHost) Serve(url string, body []byte, cacheControl string) {
 	o.docs[url] = oauthDocument{body: body, cacheControl: cacheControl}
 }
 
+// Unserve makes the host answer a GET of url 404 Not Found again.
+func (o *OAuthClientHost) Unserve(url string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.docs, url)
+}
+
 // Fetches is how many times url was asked for.
 func (o *OAuthClientHost) Fetches(url string) int {
 	o.mu.Lock()

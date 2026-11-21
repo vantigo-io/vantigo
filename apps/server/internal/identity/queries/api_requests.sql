@@ -32,6 +32,7 @@ FROM identity.api_requests r
 WHERE r.integration_id = @integration_id
   AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
   AND (sqlc.narg(key_id)::uuid IS NULL OR r.key_id = sqlc.narg(key_id)::uuid)
+  AND (sqlc.narg(connection_id)::uuid IS NULL OR r.connection_id = sqlc.narg(connection_id)::uuid)
   AND (sqlc.narg(status_class)::int IS NULL OR r.status / 100 = sqlc.narg(status_class)::int)
   AND (sqlc.narg(reason)::text IS NULL OR r.reason = sqlc.narg(reason)::text)
 GROUP BY 1, 2
@@ -45,6 +46,7 @@ FROM identity.api_requests r
 WHERE r.integration_id = @integration_id
   AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
   AND (sqlc.narg(key_id)::uuid IS NULL OR r.key_id = sqlc.narg(key_id)::uuid)
+  AND (sqlc.narg(connection_id)::uuid IS NULL OR r.connection_id = sqlc.narg(connection_id)::uuid)
   AND (sqlc.narg(status_class)::int IS NULL OR r.status / 100 = sqlc.narg(status_class)::int)
   AND (sqlc.narg(reason)::text IS NULL OR r.reason = sqlc.narg(reason)::text)
 GROUP BY r.operation_id
@@ -64,6 +66,7 @@ LEFT JOIN identity.oauth_connections c ON c.id = r.connection_id
 WHERE r.integration_id = @integration_id
   AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
   AND (sqlc.narg(key_id)::uuid IS NULL OR r.key_id = sqlc.narg(key_id)::uuid)
+  AND (sqlc.narg(connection_id)::uuid IS NULL OR r.connection_id = sqlc.narg(connection_id)::uuid)
   AND (sqlc.narg(status_class)::int IS NULL OR r.status / 100 = sqlc.narg(status_class)::int)
   AND (sqlc.narg(reason)::text IS NULL OR r.reason = sqlc.narg(reason)::text)
 ORDER BY r.at DESC

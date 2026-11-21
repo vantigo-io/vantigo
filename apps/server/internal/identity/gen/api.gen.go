@@ -2072,12 +2072,14 @@ type IntegrationConnection struct {
 	AuthorizedBy     *openapi_types.UUID `json:"authorizedBy"`
 	AuthorizedByName *string             `json:"authorizedByName"`
 
-	// ClientHost The host Vantigo fetched the client's metadata document from.
-	ClientHost string                          `json:"clientHost"`
-	ClientId   string                          `json:"clientId"`
+	// ClientHost For a client identified by its metadata document, the host Vantigo fetched the document from; for a registered client, the host of the redirect URI it was approved for.
+	ClientHost string `json:"clientHost"`
+	ClientId   string `json:"clientId"`
+
+	// ClientKind metadata for a client identified by its metadata document, registered for a client an Owner registered here (OAuth connections design C8, C25).
 	ClientKind IntegrationConnectionClientKind `json:"clientKind"`
 
-	// ClientName The name the client calls itself, as the consent page showed it.
+	// ClientName The name the client calls itself, or the name it was registered under, as the consent page showed it.
 	ClientName  string    `json:"clientName"`
 	ConnectedAt time.Time `json:"connectedAt"`
 
@@ -2085,7 +2087,7 @@ type IntegrationConnection struct {
 	ExpiresAt time.Time          `json:"expiresAt"`
 	Id        openapi_types.UUID `json:"id"`
 
-	// InactiveReason Why an inactive connection's tokens are refused; authorizer_removed when the person who connected it is no longer an active Owner.
+	// InactiveReason Why an inactive connection is held back. authorizer_removed when the person who connected it is no longer an active Owner, and its tokens are refused; client_not_allowed when its client's host is no longer on the workspace's list of client hosts (C11), and it cannot renew its token until the host is listed again.
 	InactiveReason *string    `json:"inactiveReason"`
 	LastUsedAt     *time.Time `json:"lastUsedAt"`
 	LastUsedIp     *string    `json:"lastUsedIp"`
@@ -2095,7 +2097,7 @@ type IntegrationConnection struct {
 	Status IntegrationConnectionStatus `json:"status"`
 }
 
-// IntegrationConnectionClientKind defines model for IntegrationConnection.ClientKind.
+// IntegrationConnectionClientKind metadata for a client identified by its metadata document, registered for a client an Owner registered here (OAuth connections design C8, C25).
 type IntegrationConnectionClientKind string
 
 // IntegrationConnectionStatus defines model for IntegrationConnection.Status.
@@ -2410,9 +2412,11 @@ type OAuthAuthorizationRedirect struct {
 type OAuthClientDisplay struct {
 	ClientId string `json:"clientId"`
 
-	// ClientIdHost The host of the client_id, where Vantigo fetched the client's metadata document from, in ASCII.
-	ClientIdHost string                 `json:"clientIdHost"`
-	Kind         OAuthClientDisplayKind `json:"kind"`
+	// ClientIdHost The host of the client_id, where Vantigo fetched the client's metadata document from, in ASCII; for a registered client, the redirect URI's host.
+	ClientIdHost string `json:"clientIdHost"`
+
+	// Kind metadata for a client identified by its metadata document; registered for a client an Owner registered here (C8), which the page shows as registered here by registeredBy.
+	Kind OAuthClientDisplayKind `json:"kind"`
 
 	// Loopback Whether the redirect goes to this computer, where any program could be asking.
 	Loopback bool `json:"loopback"`
@@ -2422,10 +2426,25 @@ type OAuthClientDisplay struct {
 
 	// RedirectHost The redirect URI's host, in ASCII.
 	RedirectHost string `json:"redirectHost"`
+
+	// RegisteredBy For a registered client, the name of the person who registered it, null once they are deleted; null for a client identified by its metadata document.
+	RegisteredBy *string `json:"registeredBy,omitempty"`
 }
 
-// OAuthClientDisplayKind defines model for OAuthClientDisplay.Kind.
+// OAuthClientDisplayKind metadata for a client identified by its metadata document; registered for a client an Owner registered here (C8), which the page shows as registered here by registeredBy.
 type OAuthClientDisplayKind string
+
+// OAuthClientHostsSettings The client hosts that may connect by their metadata document (OAuth connections design C11).
+type OAuthClientHostsSettings struct {
+	// ClientHosts Host names, lower-case, sorted. Empty admits any client identified by its metadata document; otherwise a client_id's host must equal an entry or be a subdomain of one. Registered clients are always admitted.
+	ClientHosts []string `json:"clientHosts"`
+}
+
+// OAuthClientHostsSettingsRequest defines model for OAuthClientHostsSettingsRequest.
+type OAuthClientHostsSettingsRequest struct {
+	// ClientHosts At most 50 host names, each a DNS name of at least two labels in ASCII (no punycode, no address, no port, no wildcard); case and repeats are ignored. Empty admits any host.
+	ClientHosts []string `json:"clientHosts"`
+}
 
 // OAuthIntegrationChoice defines model for OAuthIntegrationChoice.
 type OAuthIntegrationChoice struct {
@@ -2446,6 +2465,41 @@ type OAuthIntegrationChoiceMaxAccess string
 
 // OAuthIntegrationChoiceReason Why it is not eligible.
 type OAuthIntegrationChoiceReason string
+
+// OAuthRegisteredClient A client an Owner registered by hand (OAuth connections design C8), for a client that publishes no metadata document. A public client with PKCE and no secret.
+type OAuthRegisteredClient struct {
+	// ClientId The client_id the client is configured with, vtc_ and 24 letters and digits.
+	ClientId  string              `json:"clientId"`
+	CreatedAt time.Time           `json:"createdAt"`
+	CreatedBy *openapi_types.UUID `json:"createdBy"`
+
+	// CreatedByName The person who registered it, null once they are deleted.
+	CreatedByName *string            `json:"createdByName"`
+	Id            openapi_types.UUID `json:"id"`
+
+	// LiveConnections How many of its connections are activated, not revoked and not expired; archiving the client ends them.
+	LiveConnections int       `json:"liveConnections"`
+	Name            string    `json:"name"`
+	RedirectUris    []string  `json:"redirectUris"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+
+	// Version Send it back as If-Match on PATCH and on the archive.
+	Version string `json:"version"`
+}
+
+// OAuthRegisteredClientList defines model for OAuthRegisteredClientList.
+type OAuthRegisteredClientList struct {
+	Clients []OAuthRegisteredClient `json:"clients"`
+}
+
+// OAuthRegisteredClientRequest defines model for OAuthRegisteredClientRequest.
+type OAuthRegisteredClientRequest struct {
+	// Name 1 to 80 characters, shown on the consent page and in Connected apps; control and bidirectional characters are removed.
+	Name string `json:"name"`
+
+	// RedirectUris 1 to 20 redirect URIs, each https with a host, or http on 127.0.0.1, [::1] or localhost (whose port is the client's to choose), with no fragment, at most 1,024 characters. Repeats are ignored.
+	RedirectUris []string `json:"redirectUris"`
+}
 
 // OidcProviderResponse defines model for OidcProviderResponse.
 type OidcProviderResponse struct {
@@ -3883,6 +3937,9 @@ type GetIdentityIntegrationsByIdRequestsParams struct {
 	// Key Only the requests of this key.
 	Key *openapi_types.UUID `form:"key,omitempty" json:"key,omitempty"`
 
+	// Connection Only the requests of this connected app (OAuth connections design A18). With key as well, only requests that match both, which is none.
+	Connection *openapi_types.UUID `form:"connection,omitempty" json:"connection,omitempty"`
+
 	// StatusClass Only the requests answered with this status class, 2 for 2xx through 5 for 5xx.
 	StatusClass *int `form:"statusClass,omitempty" json:"statusClass,omitempty"`
 
@@ -3945,6 +4002,18 @@ type PostIdentityLoginJSONBody = LoginRequest
 
 // PostIdentityLogin2faJSONBody defines parameters for PostIdentityLogin2fa.
 type PostIdentityLogin2faJSONBody = TwoFactorRequest
+
+// PatchIdentityOauthClientsByIdParams defines parameters for PatchIdentityOauthClientsById.
+type PatchIdentityOauthClientsByIdParams struct {
+	// IfMatch The client's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch.
+	IfMatch string `json:"If-Match"`
+}
+
+// PostIdentityOauthClientsByIdArchiveParams defines parameters for PostIdentityOauthClientsByIdArchive.
+type PostIdentityOauthClientsByIdArchiveParams struct {
+	// IfMatch The client's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch.
+	IfMatch string `json:"If-Match"`
+}
 
 // GetIdentityOidcCallbackParams defines parameters for GetIdentityOidcCallback.
 type GetIdentityOidcCallbackParams struct {
@@ -4275,11 +4344,20 @@ type PostIdentityLoginJSONRequestBody = PostIdentityLoginJSONBody
 // PostIdentityLogin2faJSONRequestBody defines body for PostIdentityLogin2fa for application/json ContentType.
 type PostIdentityLogin2faJSONRequestBody = PostIdentityLogin2faJSONBody
 
+// PostIdentityOauthClientsJSONRequestBody defines body for PostIdentityOauthClients for application/json ContentType.
+type PostIdentityOauthClientsJSONRequestBody = OAuthRegisteredClientRequest
+
+// PatchIdentityOauthClientsByIdJSONRequestBody defines body for PatchIdentityOauthClientsById for application/json ContentType.
+type PatchIdentityOauthClientsByIdJSONRequestBody = OAuthRegisteredClientRequest
+
 // PostIdentityOauthAuthorizationsJSONRequestBody defines body for PostIdentityOauthAuthorizations for application/json ContentType.
 type PostIdentityOauthAuthorizationsJSONRequestBody = OAuthAuthorizationDecision
 
 // PostIdentityOauthAuthorizationsPreviewJSONRequestBody defines body for PostIdentityOauthAuthorizationsPreview for application/json ContentType.
 type PostIdentityOauthAuthorizationsPreviewJSONRequestBody = OAuthAuthorizationQuery
+
+// PutIdentityOauthSettingsJSONRequestBody defines body for PutIdentityOauthSettings for application/json ContentType.
+type PutIdentityOauthSettingsJSONRequestBody = OAuthClientHostsSettingsRequest
 
 // PostIdentityOidcCallbackFormdataRequestBody defines body for PostIdentityOidcCallback for application/x-www-form-urlencoded ContentType.
 type PostIdentityOidcCallbackFormdataRequestBody PostIdentityOidcCallbackFormdataBody
@@ -5388,12 +5466,30 @@ type ServerInterface interface {
 	// PostIdentityLogout Sign out of the application cookie
 	// (POST /api/v1/identity/logout)
 	PostIdentityLogout(w http.ResponseWriter, r *http.Request)
+	// GetIdentityOauthClients List the registered OAuth clients
+	// (GET /api/v1/identity/oauth-clients)
+	GetIdentityOauthClients(w http.ResponseWriter, r *http.Request)
+	// PostIdentityOauthClients Register an OAuth client
+	// (POST /api/v1/identity/oauth-clients)
+	PostIdentityOauthClients(w http.ResponseWriter, r *http.Request)
+	// PatchIdentityOauthClientsById Change a registered OAuth client
+	// (PATCH /api/v1/identity/oauth-clients/{id})
+	PatchIdentityOauthClientsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PatchIdentityOauthClientsByIdParams)
+	// PostIdentityOauthClientsByIdArchive Archive a registered OAuth client
+	// (POST /api/v1/identity/oauth-clients/{id}/archive)
+	PostIdentityOauthClientsByIdArchive(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityOauthClientsByIdArchiveParams)
 	// PostIdentityOauthAuthorizations Approve or deny an OAuth authorization
 	// (POST /api/v1/identity/oauth/authorizations)
 	PostIdentityOauthAuthorizations(w http.ResponseWriter, r *http.Request)
 	// PostIdentityOauthAuthorizationsPreview Preview an OAuth authorization
 	// (POST /api/v1/identity/oauth/authorizations/preview)
 	PostIdentityOauthAuthorizationsPreview(w http.ResponseWriter, r *http.Request)
+	// GetIdentityOauthSettings Get the client hosts that may connect
+	// (GET /api/v1/identity/oauth/settings)
+	GetIdentityOauthSettings(w http.ResponseWriter, r *http.Request)
+	// PutIdentityOauthSettings Change the client hosts that may connect
+	// (PUT /api/v1/identity/oauth/settings)
+	PutIdentityOauthSettings(w http.ResponseWriter, r *http.Request)
 	// GetIdentityOidcCallback Finish an OpenID Connect sign-in (redirect)
 	// (GET /api/v1/identity/oidc/callback)
 	GetIdentityOidcCallback(w http.ResponseWriter, r *http.Request, params GetIdentityOidcCallbackParams)
@@ -8229,6 +8325,19 @@ func (siw *ServerInterfaceWrapper) GetIdentityIntegrationsByIdRequests(w http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "connection" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "connection", r.URL.Query(), &params.Connection, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "connection"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connection", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "statusClass" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "statusClass", r.URL.Query(), &params.StatusClass, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -8897,6 +9006,142 @@ func (siw *ServerInterfaceWrapper) PostIdentityLogout(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetIdentityOauthClients operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityOauthClients(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityOauthClients(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityOauthClients operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityOauthClients(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityOauthClients(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchIdentityOauthClientsById operation middleware
+func (siw *ServerInterfaceWrapper) PatchIdentityOauthClientsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PatchIdentityOauthClientsByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchIdentityOauthClientsById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityOauthClientsByIdArchive operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityOauthClientsByIdArchive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostIdentityOauthClientsByIdArchiveParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityOauthClientsByIdArchive(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostIdentityOauthAuthorizations operation middleware
 func (siw *ServerInterfaceWrapper) PostIdentityOauthAuthorizations(w http.ResponseWriter, r *http.Request) {
 
@@ -8916,6 +9161,34 @@ func (siw *ServerInterfaceWrapper) PostIdentityOauthAuthorizationsPreview(w http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityOauthAuthorizationsPreview(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityOauthSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityOauthSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityOauthSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityOauthSettings operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityOauthSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityOauthSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11180,8 +11453,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/login", wrapper.PostIdentityLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/login/2fa", wrapper.PostIdentityLogin2fa)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/logout", wrapper.PostIdentityLogout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/oauth-clients", wrapper.GetIdentityOauthClients)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/oauth-clients", wrapper.PostIdentityOauthClients)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/identity/oauth-clients/{id}", wrapper.PatchIdentityOauthClientsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/oauth-clients/{id}/archive", wrapper.PostIdentityOauthClientsByIdArchive)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/oauth/authorizations", wrapper.PostIdentityOauthAuthorizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/oauth/authorizations/preview", wrapper.PostIdentityOauthAuthorizationsPreview)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/oauth/settings", wrapper.GetIdentityOauthSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/oauth/settings", wrapper.PutIdentityOauthSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/oidc/callback", wrapper.GetIdentityOidcCallback)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/oidc/callback", wrapper.PostIdentityOidcCallback)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/oidc/challenge", wrapper.GetIdentityOidcChallenge)
@@ -20006,6 +20285,342 @@ func (response PostIdentityLogout401JSONResponse) VisitPostIdentityLogoutRespons
 	return err
 }
 
+type GetIdentityOauthClientsRequestObject struct {
+}
+
+type GetIdentityOauthClientsResponseObject interface {
+	VisitGetIdentityOauthClientsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityOauthClients200JSONResponse OAuthRegisteredClientList
+
+func (response GetIdentityOauthClients200JSONResponse) VisitGetIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOauthClients401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOauthClients401JSONResponse) VisitGetIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOauthClients403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOauthClients403JSONResponse) VisitGetIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOauthClients404JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOauthClients404JSONResponse) VisitGetIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClientsRequestObject struct {
+	Body *PostIdentityOauthClientsJSONRequestBody
+}
+
+type PostIdentityOauthClientsResponseObject interface {
+	VisitPostIdentityOauthClientsResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityOauthClients201JSONResponse OAuthRegisteredClient
+
+func (response PostIdentityOauthClients201JSONResponse) VisitPostIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClients400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClients400JSONResponse) VisitPostIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClients401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClients401JSONResponse) VisitPostIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClients403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClients403JSONResponse) VisitPostIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClients404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClients404JSONResponse) VisitPostIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClients409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClients409JSONResponse) VisitPostIdentityOauthClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityOauthClientsByIdRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params PatchIdentityOauthClientsByIdParams
+	Body   *PatchIdentityOauthClientsByIdJSONRequestBody
+}
+
+type PatchIdentityOauthClientsByIdResponseObject interface {
+	VisitPatchIdentityOauthClientsByIdResponse(w http.ResponseWriter) error
+}
+
+type PatchIdentityOauthClientsById200JSONResponse OAuthRegisteredClient
+
+func (response PatchIdentityOauthClientsById200JSONResponse) VisitPatchIdentityOauthClientsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityOauthClientsById400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityOauthClientsById400JSONResponse) VisitPatchIdentityOauthClientsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityOauthClientsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityOauthClientsById401JSONResponse) VisitPatchIdentityOauthClientsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityOauthClientsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityOauthClientsById403JSONResponse) VisitPatchIdentityOauthClientsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityOauthClientsById404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityOauthClientsById404JSONResponse) VisitPatchIdentityOauthClientsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityOauthClientsById412JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityOauthClientsById412JSONResponse) VisitPatchIdentityOauthClientsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClientsByIdArchiveRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params PostIdentityOauthClientsByIdArchiveParams
+}
+
+type PostIdentityOauthClientsByIdArchiveResponseObject interface {
+	VisitPostIdentityOauthClientsByIdArchiveResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityOauthClientsByIdArchive204Response struct {
+}
+
+func (response PostIdentityOauthClientsByIdArchive204Response) VisitPostIdentityOauthClientsByIdArchiveResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PostIdentityOauthClientsByIdArchive400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClientsByIdArchive400JSONResponse) VisitPostIdentityOauthClientsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClientsByIdArchive401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClientsByIdArchive401JSONResponse) VisitPostIdentityOauthClientsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClientsByIdArchive403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClientsByIdArchive403JSONResponse) VisitPostIdentityOauthClientsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClientsByIdArchive404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClientsByIdArchive404JSONResponse) VisitPostIdentityOauthClientsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthClientsByIdArchive412JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthClientsByIdArchive412JSONResponse) VisitPostIdentityOauthClientsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostIdentityOauthAuthorizationsRequestObject struct {
 	Body *PostIdentityOauthAuthorizationsJSONRequestBody
 }
@@ -20240,6 +20855,147 @@ func (response PostIdentityOauthAuthorizationsPreview429JSONResponse) VisitPostI
 		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
 	}
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOauthSettingsRequestObject struct {
+}
+
+type GetIdentityOauthSettingsResponseObject interface {
+	VisitGetIdentityOauthSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityOauthSettings200JSONResponse OAuthClientHostsSettings
+
+func (response GetIdentityOauthSettings200JSONResponse) VisitGetIdentityOauthSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOauthSettings401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOauthSettings401JSONResponse) VisitGetIdentityOauthSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOauthSettings403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOauthSettings403JSONResponse) VisitGetIdentityOauthSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOauthSettings404JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOauthSettings404JSONResponse) VisitGetIdentityOauthSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOauthSettingsRequestObject struct {
+	Body *PutIdentityOauthSettingsJSONRequestBody
+}
+
+type PutIdentityOauthSettingsResponseObject interface {
+	VisitPutIdentityOauthSettingsResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityOauthSettings200JSONResponse OAuthClientHostsSettings
+
+func (response PutIdentityOauthSettings200JSONResponse) VisitPutIdentityOauthSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOauthSettings400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOauthSettings400JSONResponse) VisitPutIdentityOauthSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOauthSettings401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOauthSettings401JSONResponse) VisitPutIdentityOauthSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOauthSettings403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOauthSettings403JSONResponse) VisitPutIdentityOauthSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOauthSettings404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOauthSettings404JSONResponse) VisitPutIdentityOauthSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27385,12 +28141,30 @@ type StrictServerInterface interface {
 	// PostIdentityLogout Sign out of the application cookie
 	// (POST /api/v1/identity/logout)
 	PostIdentityLogout(ctx context.Context, request PostIdentityLogoutRequestObject) (PostIdentityLogoutResponseObject, error)
+	// GetIdentityOauthClients List the registered OAuth clients
+	// (GET /api/v1/identity/oauth-clients)
+	GetIdentityOauthClients(ctx context.Context, request GetIdentityOauthClientsRequestObject) (GetIdentityOauthClientsResponseObject, error)
+	// PostIdentityOauthClients Register an OAuth client
+	// (POST /api/v1/identity/oauth-clients)
+	PostIdentityOauthClients(ctx context.Context, request PostIdentityOauthClientsRequestObject) (PostIdentityOauthClientsResponseObject, error)
+	// PatchIdentityOauthClientsById Change a registered OAuth client
+	// (PATCH /api/v1/identity/oauth-clients/{id})
+	PatchIdentityOauthClientsById(ctx context.Context, request PatchIdentityOauthClientsByIdRequestObject) (PatchIdentityOauthClientsByIdResponseObject, error)
+	// PostIdentityOauthClientsByIdArchive Archive a registered OAuth client
+	// (POST /api/v1/identity/oauth-clients/{id}/archive)
+	PostIdentityOauthClientsByIdArchive(ctx context.Context, request PostIdentityOauthClientsByIdArchiveRequestObject) (PostIdentityOauthClientsByIdArchiveResponseObject, error)
 	// PostIdentityOauthAuthorizations Approve or deny an OAuth authorization
 	// (POST /api/v1/identity/oauth/authorizations)
 	PostIdentityOauthAuthorizations(ctx context.Context, request PostIdentityOauthAuthorizationsRequestObject) (PostIdentityOauthAuthorizationsResponseObject, error)
 	// PostIdentityOauthAuthorizationsPreview Preview an OAuth authorization
 	// (POST /api/v1/identity/oauth/authorizations/preview)
 	PostIdentityOauthAuthorizationsPreview(ctx context.Context, request PostIdentityOauthAuthorizationsPreviewRequestObject) (PostIdentityOauthAuthorizationsPreviewResponseObject, error)
+	// GetIdentityOauthSettings Get the client hosts that may connect
+	// (GET /api/v1/identity/oauth/settings)
+	GetIdentityOauthSettings(ctx context.Context, request GetIdentityOauthSettingsRequestObject) (GetIdentityOauthSettingsResponseObject, error)
+	// PutIdentityOauthSettings Change the client hosts that may connect
+	// (PUT /api/v1/identity/oauth/settings)
+	PutIdentityOauthSettings(ctx context.Context, request PutIdentityOauthSettingsRequestObject) (PutIdentityOauthSettingsResponseObject, error)
 	// GetIdentityOidcCallback Finish an OpenID Connect sign-in (redirect)
 	// (GET /api/v1/identity/oidc/callback)
 	GetIdentityOidcCallback(ctx context.Context, request GetIdentityOidcCallbackRequestObject) (GetIdentityOidcCallbackResponseObject, error)
@@ -31066,6 +31840,122 @@ func (sh *strictHandler) PostIdentityLogout(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// GetIdentityOauthClients operation middleware
+func (sh *strictHandler) GetIdentityOauthClients(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityOauthClientsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityOauthClients(ctx, request.(GetIdentityOauthClientsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityOauthClients")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityOauthClientsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityOauthClientsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityOauthClients operation middleware
+func (sh *strictHandler) PostIdentityOauthClients(w http.ResponseWriter, r *http.Request) {
+	var request PostIdentityOauthClientsRequestObject
+
+	var body PostIdentityOauthClientsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityOauthClients(ctx, request.(PostIdentityOauthClientsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityOauthClients")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityOauthClientsResponseObject); ok {
+		if err := validResponse.VisitPostIdentityOauthClientsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchIdentityOauthClientsById operation middleware
+func (sh *strictHandler) PatchIdentityOauthClientsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PatchIdentityOauthClientsByIdParams) {
+	var request PatchIdentityOauthClientsByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PatchIdentityOauthClientsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchIdentityOauthClientsById(ctx, request.(PatchIdentityOauthClientsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchIdentityOauthClientsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchIdentityOauthClientsByIdResponseObject); ok {
+		if err := validResponse.VisitPatchIdentityOauthClientsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityOauthClientsByIdArchive operation middleware
+func (sh *strictHandler) PostIdentityOauthClientsByIdArchive(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityOauthClientsByIdArchiveParams) {
+	var request PostIdentityOauthClientsByIdArchiveRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityOauthClientsByIdArchive(ctx, request.(PostIdentityOauthClientsByIdArchiveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityOauthClientsByIdArchive")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityOauthClientsByIdArchiveResponseObject); ok {
+		if err := validResponse.VisitPostIdentityOauthClientsByIdArchiveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostIdentityOauthAuthorizations operation middleware
 func (sh *strictHandler) PostIdentityOauthAuthorizations(w http.ResponseWriter, r *http.Request) {
 	var request PostIdentityOauthAuthorizationsRequestObject
@@ -31121,6 +32011,61 @@ func (sh *strictHandler) PostIdentityOauthAuthorizationsPreview(w http.ResponseW
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityOauthAuthorizationsPreviewResponseObject); ok {
 		if err := validResponse.VisitPostIdentityOauthAuthorizationsPreviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityOauthSettings operation middleware
+func (sh *strictHandler) GetIdentityOauthSettings(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityOauthSettingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityOauthSettings(ctx, request.(GetIdentityOauthSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityOauthSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityOauthSettingsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityOauthSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityOauthSettings operation middleware
+func (sh *strictHandler) PutIdentityOauthSettings(w http.ResponseWriter, r *http.Request) {
+	var request PutIdentityOauthSettingsRequestObject
+
+	var body PutIdentityOauthSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityOauthSettings(ctx, request.(PutIdentityOauthSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityOauthSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityOauthSettingsResponseObject); ok {
+		if err := validResponse.VisitPutIdentityOauthSettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
