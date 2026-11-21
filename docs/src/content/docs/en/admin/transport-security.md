@@ -292,13 +292,15 @@ current browsers. The proxy must pass the upgrade
 
 ### The OAuth token endpoint and discovery
 
-With `OAUTH_ENABLED=1`, `POST /api/oauth/token` is matched ahead of the cross-origin
-protection: it reads no cookie, so a cross-site request gains nothing from a browser's session,
-and a client that sends `Origin` gets OAuth's own JSON answer rather than a `403`. It takes a
-form body of at most 16 KiB and is limited to 120 requests a minute per address. The OAuth
-discovery documents under `/.well-known/` are public JSON, cached five minutes; every other
-path under `/.well-known/` answers `404` rather than the application's page. Off, which is the
-default for now, all of them answer `404` ([OAuth connections](/en/reference/oauth/)).
+While `OAUTH_ENABLED` is on, the default, `POST /api/oauth/token` is matched ahead of the
+cross-origin protection: it reads no cookie, so a cross-site request gains nothing from a
+browser's session, and a client that sends `Origin` gets OAuth's own JSON answer rather than a
+`403`. It takes a form body of at most 16 KiB and is limited to 120 requests a minute per
+address. The OAuth discovery documents under `/.well-known/` are public JSON, cached five
+minutes; every other path under `/.well-known/` answers `404` rather than the application's
+page. With `OAUTH_ENABLED=0` all of them answer `404` ([OAuth connections](/en/reference/oauth/)).
+The consent page, `/oauth/authorize`, is the application's own page and carries its headers, so
+no other site can frame it.
 
 ## The API contract document
 

@@ -4,6 +4,7 @@ description: "Lokale kontoer, brukere Ansatte styrer, kontoene Ansatte kunngjør
 sidebar:
   order: 20
 sources:
+  - apps/host/frontend/src/lib/oauth-return.ts
   - apps/server/internal/identity
   - apps/server/internal/config
   - apps/server/cmd/vantigo
@@ -1127,8 +1128,8 @@ eldes ut av seg selv.
 
 ### Tilkoblede apper
 
-Med `OAUTH_ENABLED=1` (av som standard til skjermbildene er på plass) kan en integrasjon også
-nås gjennom en **tilkobling**: en MCP-klient eller app en eier godkjente ved å logge inn, som
+Mens `OAUTH_ENABLED` er på, som er standard, kan en integrasjon også nås gjennom en
+**tilkobling**: en MCP-klient eller app en eier godkjente ved å logge inn, som
 viser et OAuth-tilgangstoken, `Authorization: Bearer vta_…`, i stedet for en nøkkel
 ([OAuth connections](/en/reference/oauth/)). Tokenet vurderes som en nøkkel — aldri med en
 øktinformasjonskapsel ved siden av, gjennom de samme rollene, merkene og hastighetsgrensen —
@@ -1144,6 +1145,17 @@ fra hen eierrollen under **Brukere**, tilbakekaller tilkoblingene i samme transa
 (`authorizer_removed`); en endring som når hen på en annen måte, for eksempel en
 gruppekobling, gjør at tilkoblingen avvises med en gang og vises som inaktiv til en eier
 tilbakekaller den.
+
+En eier godkjenner en tilkobling på samtykkesiden, `/oauth/authorize`, som klienten sender
+nettleseren til ([API-tilgang › Koble til ved å logge inn](/nb/admin/api-access/#koble-til-ved-å-logge-inn)).
+Øktinformasjonskapselen er `SameSite=Strict`, så den følger ikke med den navigeringen, men
+sidens egne forespørsler går til samme opprinnelse og har den med. Uten økt tar siden vare på
+adressen sin i fanens `sessionStorage` (`oauth.return`) og går til innlogging; etter enhver
+innlogging — passord, tofaktor, passnøkkel, OIDC eller en påtvunget MFA-registrering — går
+applikasjonen tilbake dit når økten er forbi registreringen. Bare den sidens adresse, yngre enn
+ti minutter, følges, og ingen URL har en tilbake-til-adresse, så returen kan ikke sende noen
+andre steder. En eier som holdes ved MFA-registrering, sendes først dit og kommer tilbake på
+samme måte.
 
 ### Hva som revideres for integrasjoner
 

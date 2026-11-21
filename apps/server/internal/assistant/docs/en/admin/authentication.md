@@ -4,6 +4,7 @@ description: "Local accounts, users Staff manages, the accounts it announces and
 sidebar:
   order: 20
 sources:
+  - apps/host/frontend/src/lib/oauth-return.ts
   - apps/server/internal/identity
   - apps/server/internal/config
   - apps/server/cmd/vantigo
@@ -1087,8 +1088,8 @@ their own.
 
 ### Connected apps
 
-With `OAUTH_ENABLED=1` (off by default until its screens land) an integration can also be
-reached through a **connection**: an MCP client or app an Owner approved by signing in, which
+While `OAUTH_ENABLED` is on, the default, an integration can also be reached through a
+**connection**: an MCP client or app an Owner approved by signing in, which
 presents an OAuth access token, `Authorization: Bearer vta_…`, instead of a key
 ([OAuth connections](/en/reference/oauth/)). The token is judged as a key is — never with a
 session cookie beside it, through the same roles, marks and rate limit — with the connection's
@@ -1102,6 +1103,16 @@ an Owner's connections by failing their password. Disabling or deleting that per
 their Owner role away under **Users**, revokes their connections in the same transaction
 (`authorizer_removed`); a change that reaches them another way, such as a group mapping, leaves
 the connection refused at once and listed as inactive until an Owner revokes it.
+
+An Owner approves a connection on the consent page, `/oauth/authorize`, which the client sends
+the browser to ([API access › Connecting by signing in](/en/admin/api-access/#connecting-by-signing-in)).
+The session cookie is `SameSite=Strict`, so it does not arrive with that navigation, but the
+page's own requests are same-origin and carry it. Without a session the page keeps its address
+in the tab's `sessionStorage` (`oauth.return`) and goes to sign-in; after any sign-in —
+password, two-factor, passkey, OIDC or a forced MFA enrolment — the application goes back to
+it once the session is past enrolment. Only that page's address, younger than ten minutes, is
+followed, and no URL carries a return-to, so the return cannot send anyone elsewhere. An Owner
+held at MFA enrolment is sent to enrol first and comes back the same way.
 
 ### What is audited for integrations
 

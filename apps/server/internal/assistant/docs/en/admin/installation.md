@@ -575,7 +575,8 @@ server {
 With `APP_BASE_PATH=/vantigo`, generated invitation, password-reset and OIDC callback
 URLs include that prefix.
 
-With `OAUTH_ENABLED=1` and a base path, two of the OAuth discovery documents lie outside it,
+With OAuth connections on (`OAUTH_ENABLED=1`, the default) and a base path, two of the OAuth
+discovery documents lie outside it,
 at the host's root: `/.well-known/oauth-protected-resource/vantigo/api/mcp` and
 `/.well-known/oauth-authorization-server/vantigo`, where an MCP client looks for them. Route
 `/.well-known/oauth-` to Vantigo as well, unchanged:
@@ -724,12 +725,14 @@ Owner turns MCP on for that integration ([API access › MCP](/en/admin/api-acce
 needs nothing from your proxy beyond what `/api` already has: plain request and response, no
 stream. `MCP_ENABLED=0` in `vantigo.env` switches it off.
 
-`OAUTH_ENABLED=1` in `vantigo.env` lets an MCP client or app connect by having an Owner sign in
-and approve it, instead of with a key ([OAuth connections](/en/reference/oauth/)). It is off by
-default until the consent page lands. On, the image serves `/.well-known/oauth-*` and
-`POST /api/oauth/token`, and it fetches each client's metadata document over HTTPS from the
-client's own host — `claude.ai` and `chatgpt.com`, say — so the server needs outbound HTTPS to
-those hosts. The token endpoint is a plain form `POST`; it needs nothing more of your proxy.
+An MCP client or app can connect by having an Owner sign in and approve it, instead of with a
+key ([API access › Connecting by signing in](/en/admin/api-access/#connecting-by-signing-in)).
+It is on by default; `OAUTH_ENABLED=0` in `vantigo.env` switches it off. The image serves
+`/.well-known/oauth-*`, the consent page `/oauth/authorize` and `POST /api/oauth/token`, and it
+fetches each client's metadata document over HTTPS from the client's own host — `claude.ai` and
+`chatgpt.com`, say — so the server needs outbound HTTPS to those hosts. Claude and ChatGPT on
+the web reach the installation from their own servers, so they connect only to a public `https`
+address. The token endpoint is a plain form `POST`; it needs nothing more of your proxy.
 
 A creating `POST` an integration sends with an `Idempotency-Key` header is carried out once and
 its answer given again to every retry for 24 hours

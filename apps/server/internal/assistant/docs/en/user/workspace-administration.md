@@ -322,6 +322,17 @@ under **Connect an AI client (MCP)**. Read only limits what an AI client does th
 read-only key keeps the key itself from writing. A client asks before it runs a tool unless you
 have allowed it: do not auto-approve writes or deletes.
 
+Claude Code, Claude and ChatGPT can also connect by signing in, with no key: you give the client
+the MCP endpoint, it opens Vantigo's consent page, and there you choose the integration it acts
+as and **Read only** or **Read and write**, then **Approve**. The page shows the name the app
+calls itself beside the hosts Vantigo verified, and warns when the name borrows Vantigo's or
+the answer goes to a program on your computer; check the hosts before you approve. Someone who
+is not an Owner is told to ask one. The connections then appear under **Connected apps** on
+the integration's **Overview**, below **MCP**: the app and its host, who connected it, its
+access, when it was connected, its last use and when it ends, at most 180 days after it was
+approved. One whose Owner has since lost the role is **Inactive** and refused. **Revoke**, after
+a confirmation, ends a connection at its next request; the app must sign in again.
+
 The details — what a key can reach, the narrowing, read-only keys, networks, the rate limit,
 the answers a client gets, the request log, webhook endpoints, MCP and what to do when a key
 leaks — are under [API access](/en/admin/api-access/).
