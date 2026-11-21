@@ -361,6 +361,17 @@ jobs:
           actionlint
           shellcheck scripts/*.sh tools/ehf/*.sh tools/mva/*.sh tools/saft/*.sh
 
+      # Every release's schema must work with the previous release's binary,
+      # which keeps serving during a rolling upgrade (contributing/schema-changes).
+      # HEAD^1 is the base the pull request merges into: only the migrations
+      # it adds are read.
+      - name: 🗃️ Migrations keep the previous release working
+        run: |
+          bun run migrations:test
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            bun run migrations:check --base HEAD^1 --head HEAD
+          fi
+
       - name: 📥 Download Go modules
         working-directory: apps/server
         # proxy.golang.org drops the odd stream; one such drop must not fail

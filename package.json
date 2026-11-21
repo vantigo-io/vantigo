@@ -97,6 +97,8 @@
     "format:write": "biome check --write .",
     "docs:check": "bun run tools/docs/check-coverage.ts",
     "docs:test": "bun test tools/docs",
+    "migrations:check": "bun run tools/db/check-migrations.ts",
+    "migrations:test": "bun test tools/db",
     "colours:check": "bun run tools/frontend/check-colours.ts",
     "colours:test": "bun test tools/frontend"
   },

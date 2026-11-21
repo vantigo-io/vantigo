@@ -522,6 +522,13 @@ They are embedded into the binary (`//go:embed migrations/*.sql`), so the image 
 no migration tooling and no SQL files on disk. Add a migration by adding the next
 numbered file; never edit one that has shipped.
 
+A migration must leave the schema usable by the **previous** release's binary, which
+keeps serving while a rolling upgrade replaces it: a change that removes or narrows is
+split into expand (this release) and contract (the next, marked
+`-- vantigo:contract <reason>`). `mise run server:check` and CI fail on the statements
+that break that rule — see
+[Schema changes](https://docs.vantigo.io/en/contributing/schema-changes/).
+
 `db.ApplyMigrations` takes a PostgreSQL **advisory lock** on a fixed key before it
 applies anything, so two binaries starting at once — an old and a new one mid-rollout
 included — serialize instead of racing. The key must never change, and the runner
