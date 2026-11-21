@@ -42,6 +42,7 @@ import {
 } from "../../api/integrations";
 import { CustomRolePicker } from "../../components/custom-role-picker";
 import { translateHostPermissionKey, translateHostPermissionModule } from "../../i18n";
+import { IntegrationConnections } from "./-api-access-connections";
 import { IntegrationMcp } from "./-api-access-mcp";
 import { IntegrationRequests } from "./-api-access-requests";
 import { codeOf, contactOptions, fieldErrorsOf, integrationStatusColor, keyStatusColor } from "./-api-access-shared";
@@ -68,7 +69,8 @@ const sameIds = (a: string[], b: string[]) => a.length === b.length && [...a].so
  * integration is shown and not changed. Its Requests tab is the request log
  * (K23, -api-access-requests.tsx), its Webhooks tab its webhook endpoints
  * (outgoing webhooks design W1, -api-access-webhooks.tsx). Its Overview holds
- * the MCP section (MCP server design M16, -api-access-mcp.tsx).
+ * the MCP section (MCP server design M16, -api-access-mcp.tsx) and, under it,
+ * the connected apps (OAuth connections design C25, -api-access-connections.tsx).
  */
 export type IntegrationTab = "overview" | "requests" | "webhooks";
 
@@ -493,6 +495,7 @@ export const IntegrationPage = ({
           </PageSection>
 
           <IntegrationMcp detail={detail.data} archived={archived} />
+          <IntegrationConnections integrationId={integrationId} archived={archived} />
         </>
       )}
 

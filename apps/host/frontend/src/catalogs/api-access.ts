@@ -356,6 +356,28 @@ const en = {
     "This key is not read-only: whatever MCP allows, it can write over the REST API as far as the integration's roles go. For an agent that should only read, make a read-only key.",
   "apiAccess.mcpKeyOff":
     "To connect an AI client over MCP with this key, turn MCP on in the MCP section of Overview first.",
+  "apiAccess.connectedApps": "Connected apps",
+  "apiAccess.connectedAppsDescription":
+    "MCP clients and apps an Owner connected to this integration by signing in and approving them, instead of with a key. Each acts as the integration, with its roles, until it is revoked, and at most 180 days.",
+  "apiAccess.noConnections": "No app is connected.",
+  "apiAccess.couldNotLoadConnections": "The connected apps could not be loaded",
+  "apiAccess.connectionClient": "App",
+  "apiAccess.connectionBy": "Connected by",
+  "apiAccess.connectionAccess": "Access",
+  "apiAccess.connectionConnected": "Connected",
+  "apiAccess.connectionEnds": "Ends",
+  "apiAccess.connectionStatus_active": "Active",
+  "apiAccess.connectionStatus_inactive": "Inactive",
+  "apiAccess.inactive_authorizer_removed":
+    "The person who connected it is no longer an active Owner, so its tokens are refused. Revoke it, and connect it again if it is still needed.",
+  "apiAccess.inactive_other": "Its tokens are refused.",
+  "apiAccess.deletedPerson": "Deleted person",
+  "apiAccess.revokeConnectionLabel": "Revoke {{name}}",
+  "apiAccess.revokeConnectionTitle": "Revoke {{name}}?",
+  "apiAccess.revokeConnectionBody":
+    "The app from {{host}} is refused from its next request, everywhere at once, and must be connected again by signing in. This cannot be undone.",
+  "apiAccess.connectionRevoked": "Connection revoked",
+  "apiAccess.couldNotRevokeConnection": "Could not revoke the connection",
 };
 
 const nb: Record<keyof typeof en, string> = {
@@ -707,6 +729,28 @@ const nb: Record<keyof typeof en, string> = {
     "Denne nøkkelen er ikke skrivebeskyttet: uansett hva MCP tillater, kan den skrive gjennom REST-API-et så langt integrasjonens roller rekker. For en agent som bare skal lese, lag en skrivebeskyttet nøkkel.",
   "apiAccess.mcpKeyOff":
     "For å koble en AI-klient til over MCP med denne nøkkelen slår du først på MCP i MCP-delen av Oversikt.",
+  "apiAccess.connectedApps": "Tilkoblede apper",
+  "apiAccess.connectedAppsDescription":
+    "MCP-klienter og apper en eier har koblet til denne integrasjonen ved å logge inn og godkjenne dem, i stedet for med en nøkkel. Hver av dem handler som integrasjonen, med rollene dens, til den tilbakekalles, og høyst 180 dager.",
+  "apiAccess.noConnections": "Ingen app er koblet til.",
+  "apiAccess.couldNotLoadConnections": "De tilkoblede appene kunne ikke lastes",
+  "apiAccess.connectionClient": "App",
+  "apiAccess.connectionBy": "Koblet til av",
+  "apiAccess.connectionAccess": "Tilgang",
+  "apiAccess.connectionConnected": "Koblet til",
+  "apiAccess.connectionEnds": "Slutter",
+  "apiAccess.connectionStatus_active": "Aktiv",
+  "apiAccess.connectionStatus_inactive": "Inaktiv",
+  "apiAccess.inactive_authorizer_removed":
+    "Personen som koblet den til, er ikke lenger en aktiv eier, så tokenene avvises. Tilbakekall den, og koble den til på nytt hvis den fortsatt trengs.",
+  "apiAccess.inactive_other": "Tokenene avvises.",
+  "apiAccess.deletedPerson": "Slettet person",
+  "apiAccess.revokeConnectionLabel": "Tilbakekall {{name}}",
+  "apiAccess.revokeConnectionTitle": "Tilbakekalle {{name}}?",
+  "apiAccess.revokeConnectionBody":
+    "Appen fra {{host}} avvises fra neste forespørsel, overalt på én gang, og må kobles til på nytt ved innlogging. Dette kan ikke angres.",
+  "apiAccess.connectionRevoked": "Tilkoblingen er tilbakekalt",
+  "apiAccess.couldNotRevokeConnection": "Kunne ikke tilbakekalle tilkoblingen",
 };
 
 export const apiAccessCatalog = { en, nb } as const satisfies CatalogResources;
