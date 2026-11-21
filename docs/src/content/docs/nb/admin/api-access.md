@@ -418,10 +418,17 @@ er [OAuth connections](/en/reference/oauth/).
   **Lese og skrive** ([Velg hva agenten kan gjøre](#velg-hva-agenten-kan-gjøre)). En med
   MCP-tilgang **Av**, eller som er deaktivert, kan ikke velges.
 - Du er **eier**. Når installasjonen krever flerfaktorautentisering for administratorer, har du
-  tatt den i bruk; hvis ikke sender Vantigo deg dit for å ta den i bruk og så tilbake.
+  tatt den i bruk. Hvis ikke sender Vantigo deg til **Innstillinger → Sikkerhet** for å sette opp
+  en autentiseringsapp; når den er på, lagrer du gjenopprettingskodene den viser og velger
+  **Fortsett til appens forespørsel** under dem for å gå tilbake til samtykkesiden. Ingenting
+  tar deg bort fra kodene av seg selv.
 - Serveren når klientens vert over **utgående HTTPS** — `claude.ai`, `chatgpt.com` eller verten
   til den klienten som kobler seg til. Vantigo henter klientens publiserte beskrivelse derfra når
-  du blir bedt om å godkjenne den, aldri fra en privat eller intern adresse.
+  en eier åpner forespørselen om tilkobling, aldri fra en privat eller intern adresse; hentingen
+  viser den verten installasjonens utgående adresse.
+- **Enhver klient kan spørre.** Til en senere utgivelse gir en liste over tillatte klientverter,
+  kan enhver klient som publiserer en beskrivelse, sende en eier til samtykkesiden; eierens
+  godkjenning er den eneste porten. Sjekk vertene på siden før du godkjenner.
 - **Claude og ChatGPT på nettet** kaller installasjonen fra sine egne servere, så den må ha en
   offentlig `https`-adresse. **Claude Code** kjører på datamaskinen din og kan koble seg til enhver
   adresse den når, også en utviklingsinstans på `http://localhost`.
@@ -488,6 +495,11 @@ Hva siden ellers kan si:
   går tilbake til en klients vert uten et klikk bare når en klient fra den verten har vært koblet
   til her før.
 - **Tilkobling av apper ved innlogging er slått av** — `OAUTH_ENABLED` er `0`.
+- **Appens returadresse er ikke en denne siden sender deg til** — serveren svarte med en adresse
+  som verken er `https` eller `http` til denne datamaskinen. Ingenting ble koblet til.
+
+Hvis økten din utløper mens siden er åpen, sender den deg til innlogging og kommer tilbake til
+forespørselen etterpå.
 
 Siden kan ikke vises inne i en ramme på et annet nettsted.
 
@@ -531,8 +543,10 @@ berøres ikke.
 - **Klienten sier at innloggingen mislyktes, eller åpner aldri nettleseren:** sjekk at serveren
   når klientens vert over HTTPS, og, for Claude eller ChatGPT på nettet, at installasjonens
   adresse er offentlig `https`.
-- **Denne appen kan ikke kobles til:** klientens beskrivelse kunne ikke hentes eller ble avvist;
-  årsaken står under overskriften. Prøv igjen senere, eller koble klienten til med en nøkkel.
+- **Denne appen kan ikke kobles til:** klientens beskrivelse kunne ikke hentes eller ble avvist.
+  Når siden viser det idet forespørselen åpnes, sier forklaringen hva slags avvisning det er;
+  avvist ved **Godkjenn** eller **Avslå** sier den bare at appen ikke kan kobles til. Prøv igjen
+  senere, eller koble klienten til med en nøkkel.
 - **Klienten ble koblet til, men kallene avvises:** integrasjonens MCP-tilgang er **Av**, den er
   deaktivert, eller tilkoblingen er **Inaktiv**. Fanen **Forespørsler** viser avvisningen.
 - **En endring avvises med `insufficient_scope`:** tilkoblingen ble godkjent for **Bare lese**.

@@ -204,7 +204,7 @@ Dynamic Client Registration; the client-credentials grant; OpenID Connect (no ID
 - **C25 — Connected apps.** `GET /api/v1/identity/integrations/{id}/connections` lists activated,
   unrevoked, unexpired connections: client name and host, kind, who connected it, scopes, connected,
   last used, ends. The integration's Overview gains "Connected apps" under MCP, with Revoke behind
-  a confirmation. From B the MCP section shows the URL to paste into Claude or ChatGPT and says a
+  a confirmation. (The kind is shown from delivery C, when registered clients make it vary.) From B the MCP section shows the URL to paste into Claude or ChatGPT and says a
   sign-in follows; a "Registered clients" section sits on the API access page.
 - **C26 — Upkeep.** The `identity.api-keys` worker deletes consumed or expired codes, tokens a day
   past expiry, connections never activated after 10 minutes, connections 90 days after they were
@@ -432,3 +432,16 @@ an approved-clients mode that asks an Owner to approve a new client once.
   host has an activated connection here (revoked or not); otherwise the page shows the error and
   a "Return to <host>" button, so a crafted, broken request cannot bounce a signed-in Owner to a
   host nobody has approved.
+
+**From delivery B's reviews**
+
+- **A27 (C13, A8) — The page as built.** The consent page reads its query before the
+  application's router exists and puts it back in the address bar once the router has rewritten
+  it, so the operations and a reload see the request exactly as the client sent it. It follows
+  only a `redirectTo` the server answered that is `https`, or `http` to a loopback host. The
+  return after a forced MFA enrolment is not automatic: the security page restarts a waiting
+  entry's ten minutes while it holds the Owner, and once the authenticator is on shows
+  "Continue to the app's request" below the recovery codes. A non-Owner is told to ask an Owner
+  before any enrolment check; a `401` from either operation stores the return and goes to
+  sign-in. The buttons are **Approve** and **Deny**; **Close** closes the tab and, where a page
+  cannot close itself, goes to `/`.

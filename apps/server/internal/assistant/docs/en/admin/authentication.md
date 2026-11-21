@@ -5,6 +5,7 @@ sidebar:
   order: 20
 sources:
   - apps/host/frontend/src/lib/oauth-return.ts
+  - apps/host/frontend/src/components/oauth-return-notice.tsx
   - apps/server/internal/identity
   - apps/server/internal/config
   - apps/server/cmd/vantigo
@@ -1109,10 +1110,13 @@ the browser to ([API access › Connecting by signing in](/en/admin/api-access/#
 The session cookie is `SameSite=Strict`, so it does not arrive with that navigation, but the
 page's own requests are same-origin and carry it. Without a session the page keeps its address
 in the tab's `sessionStorage` (`oauth.return`) and goes to sign-in; after any sign-in —
-password, two-factor, passkey, OIDC or a forced MFA enrolment — the application goes back to
-it once the session is past enrolment. Only that page's address, younger than ten minutes, is
-followed, and no URL carries a return-to, so the return cannot send anyone elsewhere. An Owner
-held at MFA enrolment is sent to enrol first and comes back the same way.
+password, two-factor or passkey, or OIDC — the application goes back to it at the first page
+it loads. Only that page's address, younger than ten minutes, is followed, and no URL carries a
+return-to, so the return cannot send anyone elsewhere. An Owner held at MFA enrolment, whether
+by the sign-in or by the consent page, is sent to **Settings → Security** instead; the entry
+waits there, its ten minutes started again while the page holds them, and once the
+authenticator is on, **Continue to the app's request** below the recovery codes takes it and
+loads the consent page. Nothing navigates away from the codes on its own.
 
 ### What is audited for integrations
 
