@@ -465,9 +465,52 @@ func (e IntegrationConnectionClientKind) Valid() bool {
 	}
 }
 
+// Defines values for IntegrationConnectionEndReason.
+const (
+	IntegrationConnectionEndReasonAuthorizerRemoved     IntegrationConnectionEndReason = "authorizer_removed"
+	IntegrationConnectionEndReasonClientArchived        IntegrationConnectionEndReason = "client_archived"
+	IntegrationConnectionEndReasonClientChanged         IntegrationConnectionEndReason = "client_changed"
+	IntegrationConnectionEndReasonClientDocumentChanged IntegrationConnectionEndReason = "client_document_changed"
+	IntegrationConnectionEndReasonCodeReplayed          IntegrationConnectionEndReason = "code_replayed"
+	IntegrationConnectionEndReasonExpired               IntegrationConnectionEndReason = "expired"
+	IntegrationConnectionEndReasonIntegrationArchived   IntegrationConnectionEndReason = "integration_archived"
+	IntegrationConnectionEndReasonRefreshReused         IntegrationConnectionEndReason = "refresh_reused"
+	IntegrationConnectionEndReasonRevoked               IntegrationConnectionEndReason = "revoked"
+	IntegrationConnectionEndReasonRevokedByClient       IntegrationConnectionEndReason = "revoked_by_client"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationConnectionEndReason enum.
+func (e IntegrationConnectionEndReason) Valid() bool {
+	switch e {
+	case IntegrationConnectionEndReasonAuthorizerRemoved:
+		return true
+	case IntegrationConnectionEndReasonClientArchived:
+		return true
+	case IntegrationConnectionEndReasonClientChanged:
+		return true
+	case IntegrationConnectionEndReasonClientDocumentChanged:
+		return true
+	case IntegrationConnectionEndReasonCodeReplayed:
+		return true
+	case IntegrationConnectionEndReasonExpired:
+		return true
+	case IntegrationConnectionEndReasonIntegrationArchived:
+		return true
+	case IntegrationConnectionEndReasonRefreshReused:
+		return true
+	case IntegrationConnectionEndReasonRevoked:
+		return true
+	case IntegrationConnectionEndReasonRevokedByClient:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IntegrationConnectionStatus.
 const (
 	IntegrationConnectionStatusActive   IntegrationConnectionStatus = "active"
+	IntegrationConnectionStatusEnded    IntegrationConnectionStatus = "ended"
 	IntegrationConnectionStatusInactive IntegrationConnectionStatus = "inactive"
 )
 
@@ -475,6 +518,8 @@ const (
 func (e IntegrationConnectionStatus) Valid() bool {
 	switch e {
 	case IntegrationConnectionStatusActive:
+		return true
+	case IntegrationConnectionStatusEnded:
 		return true
 	case IntegrationConnectionStatusInactive:
 		return true
@@ -1191,6 +1236,21 @@ func (e PutIdentityBrandsByIdLogosBySlotParamsSlot) Valid() bool {
 	case PutIdentityBrandsByIdLogosBySlotParamsSlotMarkLight:
 		return true
 	case PutIdentityBrandsByIdLogosBySlotParamsSlotWordmark:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetIdentityIntegrationsByIdConnectionsParamsInclude.
+const (
+	GetIdentityIntegrationsByIdConnectionsParamsIncludeEnded GetIdentityIntegrationsByIdConnectionsParamsInclude = "ended"
+)
+
+// Valid indicates whether the value is a known member of the GetIdentityIntegrationsByIdConnectionsParamsInclude enum.
+func (e GetIdentityIntegrationsByIdConnectionsParamsInclude) Valid() bool {
+	switch e {
+	case GetIdentityIntegrationsByIdConnectionsParamsIncludeEnded:
 		return true
 	default:
 		return false
@@ -2083,6 +2143,12 @@ type IntegrationConnection struct {
 	ClientName  string    `json:"clientName"`
 	ConnectedAt time.Time `json:"connectedAt"`
 
+	// EndReason For an ended connection, why: the reason it was revoked with (C18, A3, A23, A28, A29), or expired after its 180 days.
+	EndReason *IntegrationConnectionEndReason `json:"endReason,omitempty"`
+
+	// EndedAt For an ended connection, when it was revoked or expired.
+	EndedAt *time.Time `json:"endedAt,omitempty"`
+
 	// ExpiresAt When the connection ends by itself, 180 days after it was approved.
 	ExpiresAt time.Time          `json:"expiresAt"`
 	Id        openapi_types.UUID `json:"id"`
@@ -2093,14 +2159,19 @@ type IntegrationConnection struct {
 	LastUsedIp     *string    `json:"lastUsedIp"`
 
 	// Scopes read, and write for Read and write.
-	Scopes []string                    `json:"scopes"`
+	Scopes []string `json:"scopes"`
+
+	// Status active; inactive, with inactiveReason; or, with include=ended, ended, with endedAt and endReason.
 	Status IntegrationConnectionStatus `json:"status"`
 }
 
 // IntegrationConnectionClientKind metadata for a client identified by its metadata document, registered for a client an Owner registered here (OAuth connections design C8, C25).
 type IntegrationConnectionClientKind string
 
-// IntegrationConnectionStatus defines model for IntegrationConnection.Status.
+// IntegrationConnectionEndReason For an ended connection, why: the reason it was revoked with (C18, A3, A23, A28, A29), or expired after its 180 days.
+type IntegrationConnectionEndReason string
+
+// IntegrationConnectionStatus active; inactive, with inactiveReason; or, with include=ended, ended, with endedAt and endReason.
 type IntegrationConnectionStatus string
 
 // IntegrationConnectionList defines model for IntegrationConnectionList.
@@ -3920,6 +3991,15 @@ type PatchIdentityIntegrationsByIdParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// GetIdentityIntegrationsByIdConnectionsParams defines parameters for GetIdentityIntegrationsByIdConnections.
+type GetIdentityIntegrationsByIdConnectionsParams struct {
+	// Include ended to list, beside the live connections, those that ended in the last 30 days.
+	Include *GetIdentityIntegrationsByIdConnectionsParamsInclude `form:"include,omitempty" json:"include,omitempty"`
+}
+
+// GetIdentityIntegrationsByIdConnectionsParamsInclude defines parameters for GetIdentityIntegrationsByIdConnections.
+type GetIdentityIntegrationsByIdConnectionsParamsInclude string
+
 // PostIdentityIntegrationsByIdKeysJSONBody defines parameters for PostIdentityIntegrationsByIdKeys.
 type PostIdentityIntegrationsByIdKeysJSONBody = ApiKeyCreateRequest
 
@@ -5387,7 +5467,7 @@ type ServerInterface interface {
 	PostIdentityIntegrationsByIdArchive(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetIdentityIntegrationsByIdConnections List an integration's connected apps
 	// (GET /api/v1/identity/integrations/{id}/connections)
-	GetIdentityIntegrationsByIdConnections(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	GetIdentityIntegrationsByIdConnections(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetIdentityIntegrationsByIdConnectionsParams)
 	// DeleteIdentityIntegrationsByIdConnectionsByConnectionId Revoke a connected app
 	// (DELETE /api/v1/identity/integrations/{id}/connections/{connectionId})
 	DeleteIdentityIntegrationsByIdConnectionsByConnectionId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, connectionId openapi_types.UUID)
@@ -8046,8 +8126,24 @@ func (siw *ServerInterfaceWrapper) GetIdentityIntegrationsByIdConnections(w http
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetIdentityIntegrationsByIdConnectionsParams
+
+	// ------------- Optional query parameter "include" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "include", r.URL.Query(), &params.Include, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "include"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetIdentityIntegrationsByIdConnections(w, r, id)
+		siw.Handler.GetIdentityIntegrationsByIdConnections(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17931,7 +18027,8 @@ func (response PostIdentityIntegrationsByIdArchive409JSONResponse) VisitPostIden
 }
 
 type GetIdentityIntegrationsByIdConnectionsRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id     openapi_types.UUID `json:"id"`
+	Params GetIdentityIntegrationsByIdConnectionsParams
 }
 
 type GetIdentityIntegrationsByIdConnectionsResponseObject interface {
@@ -31031,10 +31128,11 @@ func (sh *strictHandler) PostIdentityIntegrationsByIdArchive(w http.ResponseWrit
 }
 
 // GetIdentityIntegrationsByIdConnections operation middleware
-func (sh *strictHandler) GetIdentityIntegrationsByIdConnections(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (sh *strictHandler) GetIdentityIntegrationsByIdConnections(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetIdentityIntegrationsByIdConnectionsParams) {
 	var request GetIdentityIntegrationsByIdConnectionsRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetIdentityIntegrationsByIdConnections(ctx, request.(GetIdentityIntegrationsByIdConnectionsRequestObject))

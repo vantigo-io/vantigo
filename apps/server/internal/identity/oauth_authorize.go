@@ -449,6 +449,19 @@ func (s *server) PostIdentityOauthAuthorizations(ctx context.Context, req gen.Po
 	connectionID := uuid.New()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		if areq.client.kind == oauthClientKindRegistered {
+			// Held against an archive or an edit (their FOR UPDATE): the
+			// client judged above may have changed since, and a connection is
+			// never made for one archived, or for a redirect URI it dropped.
+			c, err := q.ShareRegisteredOAuthClient(ctx, areq.client.id)
+			if errors.Is(err, pgx.ErrNoRows) || (err == nil && (c.ArchivedAt != nil ||
+				!slices.ContainsFunc(c.RedirectUris, func(registered string) bool { return redirectMatches(registered, areq.redirectURI) }))) {
+				return clientRefused("The client_id is not a client registered here, or no longer lists the redirect_uri.")
+			}
+			if err != nil {
+				return fmt.Errorf("identity: read the registered client: %w", err)
+			}
+		}
 		if err := q.InsertOAuthConnection(ctx, store.InsertOAuthConnectionParams{
 			ID: connectionID, IntegrationID: rows[0].UserID, ClientID: areq.client.id, ClientKind: areq.client.kind,
 			ClientName: oauthDisplayName(areq.client.name), ClientHost: areq.client.host, RedirectUri: areq.redirectURI,
@@ -464,6 +477,9 @@ func (s *server) PostIdentityOauthAuthorizations(ctx context.Context, req gen.Po
 		}
 		return nil
 	})
+	if errors.As(err, &refused) {
+		return refuse(http.StatusBadRequest, "client_refused", refused.reason, nil), nil
+	}
 	if err != nil {
 		return nil, err
 	}

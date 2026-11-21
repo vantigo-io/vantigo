@@ -36,11 +36,39 @@ WHERE id = @id;
 -- name: GetRegisteredOAuthClient :one
 -- GetRegisteredOAuthClient is a registered client by its client_id, not
 -- archived, with the name of the person who registered it for the consent
--- page (C13).
-SELECT c.client_id, c.name, c.redirect_uris, u.display_name AS created_by_name
+-- page (C13) and whether they are still an active Owner, the authorizer's
+-- rule (A17): only then does the page name them.
+SELECT c.client_id, c.name, c.redirect_uris, u.display_name AS created_by_name,
+       identity.oauth_authorizer_active(c.created_by, @scim_enabled::boolean)::boolean AS created_by_active
 FROM identity.oauth_clients c
 LEFT JOIN identity.users u ON u.id = c.created_by
 WHERE c.client_id = @client_id AND c.archived_at IS NULL;
+
+-- name: ShareRegisteredOAuthClient :one
+-- ShareRegisteredOAuthClient reads a registered client holding it against an
+-- archive or an edit (their FOR UPDATE), for the approval's transaction: a
+-- connection is never made for a client archived or changed meanwhile.
+SELECT redirect_uris, archived_at
+FROM identity.oauth_clients
+WHERE client_id = @client_id
+FOR SHARE;
+
+-- name: RegisteredOAuthClientLive :one
+-- RegisteredOAuthClientLive is whether a registered client exists and is not
+-- archived, read by the token endpoint for a registered connection.
+SELECT EXISTS (
+    SELECT 1 FROM identity.oauth_clients WHERE client_id = @client_id AND archived_at IS NULL
+)::boolean;
+
+-- name: LockRegisteredClientOAuthConnections :many
+-- LockRegisteredClientOAuthConnections is a registered client's connections
+-- not revoked, held for an edit that may end those whose redirect URI it
+-- removes (A29). The client's row is locked first, as the archive does.
+SELECT *
+FROM identity.oauth_connections
+WHERE client_id = @client_id AND client_kind = 'registered' AND revoked_at IS NULL
+ORDER BY id
+FOR UPDATE;
 
 -- name: RevokeClientOAuthConnections :many
 -- RevokeClientOAuthConnections ends every live connection of a registered
@@ -71,8 +99,11 @@ WHERE id = 1;
 
 -- name: GetOAuthTokenConnection :one
 -- GetOAuthTokenConnection is the connection a token of kind belongs to, for
--- the revocation endpoint (A10, A23): read without a lock, so the revocation
--- locks the connection first, as every path does.
+-- the revocation endpoint (A10, A23): an access token only until it expires;
+-- a refresh token spent, superseded or expired still names its connection
+-- (A25). Read without a lock, so the revocation locks the connection first,
+-- as every path does.
 SELECT connection_id
 FROM identity.oauth_tokens
-WHERE token_hash = @token_hash AND kind = @kind;
+WHERE token_hash = @token_hash AND kind = @kind
+  AND (kind <> 'access' OR expires_at > @now::timestamptz);

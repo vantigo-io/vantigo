@@ -24,10 +24,13 @@ import (
 // connections design C18, A23; RFC 7009): a client ends its own connection
 // by presenting either of its tokens with its client_id. It is anonymous,
 // reads no cookie and is mounted, as the token endpoint is, ahead of the
-// cross-origin guard. A token that is unknown, malformed, expired, of
-// another kind (an API key, a registered client_id) or of another client's
-// connection is answered 200 and nothing is revoked, so the endpoint tells
-// no one whether a token exists.
+// cross-origin guard. An access token revokes its connection only until it
+// expires; a refresh token revokes its connection whether it is live, spent,
+// superseded or expired, since whoever holds any of a family's refresh tokens
+// may end it (A25). A token that is unknown, malformed, an expired access
+// token, of another kind (an API key, a registered client_id) or of another
+// client's connection is answered 200 and nothing is revoked, so the
+// endpoint tells no one whether a token exists.
 
 // policyOAuthRevoke limits the endpoint per client address, as the token
 // endpoint is limited (A23).
@@ -126,7 +129,7 @@ func (a *Access) revokeRequest(r *http.Request) error {
 		return nil // not a token of a connection: nothing to revoke
 	}
 	ctx := r.Context()
-	connectionID, err := a.q.GetOAuthTokenConnection(ctx, store.GetOAuthTokenConnectionParams{TokenHash: hash, Kind: kind})
+	connectionID, err := a.q.GetOAuthTokenConnection(ctx, store.GetOAuthTokenConnectionParams{TokenHash: hash, Kind: kind, Now: a.now()})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}

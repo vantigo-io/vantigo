@@ -107,9 +107,11 @@ type Access struct {
 	oauthOnce  sync.Once
 	oauthFetch *oauthFetcher
 	// revalidations are the client document revalidations running in the
-	// background (oauth_revalidate.go), revalidating how many.
-	revalidations sync.WaitGroup
-	revalidating  atomic.Int32
+	// background (oauth_revalidate.go); revalidating holds the client hosts
+	// each runs for, at most one each.
+	revalidations  sync.WaitGroup
+	revalidatingMu sync.Mutex
+	revalidating   map[string]bool
 	// limiter counts the token endpoint's requests per client address (C15).
 	limiter *ratelimit.Limiter
 }

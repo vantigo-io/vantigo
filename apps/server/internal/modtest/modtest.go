@@ -1132,6 +1132,9 @@ func New(t *testing.T, opts ...Option) *Harness {
 	// The API request log runs as in the API process; FlushAPIRequests
 	// writes what it has queued.
 	t.Cleanup(access.StartRequestLog())
+	// A client document revalidation a refresh started (OAuth A3) finishes
+	// before the database it writes to goes away.
+	t.Cleanup(access.WaitOAuthRevalidations)
 	// The rate limiter's flusher stops, after a last flush, before the pool.
 	t.Cleanup(h.deps.Limiter.Close)
 	h.requestLog = access.FlushRequestLog

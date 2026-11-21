@@ -19,9 +19,8 @@ FROM identity.api_requests r
 WHERE r.integration_id = $1
   AND r.at >= $2::timestamptz AND r.at < $3::timestamptz
   AND ($4::uuid IS NULL OR r.key_id = $4::uuid)
-  AND ($5::uuid IS NULL OR r.connection_id = $5::uuid)
-  AND ($6::int IS NULL OR r.status / 100 = $6::int)
-  AND ($7::text IS NULL OR r.reason = $7::text)
+  AND ($5::int IS NULL OR r.status / 100 = $5::int)
+  AND ($6::text IS NULL OR r.reason = $6::text)
 GROUP BY 1, 2
 ORDER BY 1, 2
 `
@@ -31,7 +30,6 @@ type APIRequestDailyCountsParams struct {
 	FromAt        time.Time
 	ToAt          time.Time
 	KeyID         *uuid.UUID
-	ConnectionID  *uuid.UUID
 	StatusClass   *int32
 	Reason        *string
 }
@@ -50,7 +48,6 @@ func (q *Queries) APIRequestDailyCounts(ctx context.Context, arg APIRequestDaily
 		arg.FromAt,
 		arg.ToAt,
 		arg.KeyID,
-		arg.ConnectionID,
 		arg.StatusClass,
 		arg.Reason,
 	)
@@ -72,18 +69,73 @@ func (q *Queries) APIRequestDailyCounts(ctx context.Context, arg APIRequestDaily
 	return items, nil
 }
 
+const aPIRequestDailyCountsByConnection = `-- name: APIRequestDailyCountsByConnection :many
+SELECT (r.at AT TIME ZONE 'UTC')::date AS day, (r.status / 100)::int AS status_class, count(*)::int AS requests
+FROM identity.api_requests r
+WHERE r.connection_id = $1 AND r.integration_id = $2
+  AND r.at >= $3::timestamptz AND r.at < $4::timestamptz
+  AND ($5::int IS NULL OR r.status / 100 = $5::int)
+  AND ($6::text IS NULL OR r.reason = $6::text)
+GROUP BY 1, 2
+ORDER BY 1, 2
+`
+
+type APIRequestDailyCountsByConnectionParams struct {
+	ConnectionID  *uuid.UUID
+	IntegrationID uuid.UUID
+	FromAt        time.Time
+	ToAt          time.Time
+	StatusClass   *int32
+	Reason        *string
+}
+
+type APIRequestDailyCountsByConnectionRow struct {
+	Day         pgtype.Date
+	StatusClass int32
+	Requests    int32
+}
+
+// APIRequestDailyCountsByConnection is APIRequestDailyCounts for one
+// connection (A18), with a plain predicate on connection_id so the planner
+// can read ix_api_requests_connection_at.
+func (q *Queries) APIRequestDailyCountsByConnection(ctx context.Context, arg APIRequestDailyCountsByConnectionParams) ([]APIRequestDailyCountsByConnectionRow, error) {
+	rows, err := q.db.Query(ctx, aPIRequestDailyCountsByConnection,
+		arg.ConnectionID,
+		arg.IntegrationID,
+		arg.FromAt,
+		arg.ToAt,
+		arg.StatusClass,
+		arg.Reason,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []APIRequestDailyCountsByConnectionRow
+	for rows.Next() {
+		var i APIRequestDailyCountsByConnectionRow
+		if err := rows.Scan(&i.Day, &i.StatusClass, &i.Requests); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const aPIRequestTopOperations = `-- name: APIRequestTopOperations :many
 SELECT r.operation_id, count(*)::int AS requests
 FROM identity.api_requests r
 WHERE r.integration_id = $1
   AND r.at >= $2::timestamptz AND r.at < $3::timestamptz
   AND ($4::uuid IS NULL OR r.key_id = $4::uuid)
-  AND ($5::uuid IS NULL OR r.connection_id = $5::uuid)
-  AND ($6::int IS NULL OR r.status / 100 = $6::int)
-  AND ($7::text IS NULL OR r.reason = $7::text)
+  AND ($5::int IS NULL OR r.status / 100 = $5::int)
+  AND ($6::text IS NULL OR r.reason = $6::text)
 GROUP BY r.operation_id
 ORDER BY requests DESC, r.operation_id
-LIMIT $8::int
+LIMIT $7::int
 `
 
 type APIRequestTopOperationsParams struct {
@@ -91,7 +143,6 @@ type APIRequestTopOperationsParams struct {
 	FromAt        time.Time
 	ToAt          time.Time
 	KeyID         *uuid.UUID
-	ConnectionID  *uuid.UUID
 	StatusClass   *int32
 	Reason        *string
 	Top           int32
@@ -110,7 +161,6 @@ func (q *Queries) APIRequestTopOperations(ctx context.Context, arg APIRequestTop
 		arg.FromAt,
 		arg.ToAt,
 		arg.KeyID,
-		arg.ConnectionID,
 		arg.StatusClass,
 		arg.Reason,
 		arg.Top,
@@ -133,6 +183,63 @@ func (q *Queries) APIRequestTopOperations(ctx context.Context, arg APIRequestTop
 	return items, nil
 }
 
+const aPIRequestTopOperationsByConnection = `-- name: APIRequestTopOperationsByConnection :many
+SELECT r.operation_id, count(*)::int AS requests
+FROM identity.api_requests r
+WHERE r.connection_id = $1 AND r.integration_id = $2
+  AND r.at >= $3::timestamptz AND r.at < $4::timestamptz
+  AND ($5::int IS NULL OR r.status / 100 = $5::int)
+  AND ($6::text IS NULL OR r.reason = $6::text)
+GROUP BY r.operation_id
+ORDER BY requests DESC, r.operation_id
+LIMIT $7::int
+`
+
+type APIRequestTopOperationsByConnectionParams struct {
+	ConnectionID  *uuid.UUID
+	IntegrationID uuid.UUID
+	FromAt        time.Time
+	ToAt          time.Time
+	StatusClass   *int32
+	Reason        *string
+	Top           int32
+}
+
+type APIRequestTopOperationsByConnectionRow struct {
+	OperationID string
+	Requests    int32
+}
+
+// APIRequestTopOperationsByConnection is APIRequestTopOperations for one
+// connection (A18).
+func (q *Queries) APIRequestTopOperationsByConnection(ctx context.Context, arg APIRequestTopOperationsByConnectionParams) ([]APIRequestTopOperationsByConnectionRow, error) {
+	rows, err := q.db.Query(ctx, aPIRequestTopOperationsByConnection,
+		arg.ConnectionID,
+		arg.IntegrationID,
+		arg.FromAt,
+		arg.ToAt,
+		arg.StatusClass,
+		arg.Reason,
+		arg.Top,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []APIRequestTopOperationsByConnectionRow
+	for rows.Next() {
+		var i APIRequestTopOperationsByConnectionRow
+		if err := rows.Scan(&i.OperationID, &i.Requests); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const aPIRequestsLatest = `-- name: APIRequestsLatest :many
 SELECT r.at, r.key_id, k.name AS key_name, r.connection_id, c.client_name, r.method, r.operation_id, r.status, r.reason,
        r.duration_ms, r.client_ip, r.trace_id
@@ -142,11 +249,10 @@ LEFT JOIN identity.oauth_connections c ON c.id = r.connection_id
 WHERE r.integration_id = $1
   AND r.at >= $2::timestamptz AND r.at < $3::timestamptz
   AND ($4::uuid IS NULL OR r.key_id = $4::uuid)
-  AND ($5::uuid IS NULL OR r.connection_id = $5::uuid)
-  AND ($6::int IS NULL OR r.status / 100 = $6::int)
-  AND ($7::text IS NULL OR r.reason = $7::text)
+  AND ($5::int IS NULL OR r.status / 100 = $5::int)
+  AND ($6::text IS NULL OR r.reason = $6::text)
 ORDER BY r.at DESC
-LIMIT $8::int
+LIMIT $7::int
 `
 
 type APIRequestsLatestParams struct {
@@ -154,7 +260,6 @@ type APIRequestsLatestParams struct {
 	FromAt        time.Time
 	ToAt          time.Time
 	KeyID         *uuid.UUID
-	ConnectionID  *uuid.UUID
 	StatusClass   *int32
 	Reason        *string
 	Latest        int32
@@ -185,7 +290,6 @@ func (q *Queries) APIRequestsLatest(ctx context.Context, arg APIRequestsLatestPa
 		arg.FromAt,
 		arg.ToAt,
 		arg.KeyID,
-		arg.ConnectionID,
 		arg.StatusClass,
 		arg.Reason,
 		arg.Latest,
@@ -197,6 +301,88 @@ func (q *Queries) APIRequestsLatest(ctx context.Context, arg APIRequestsLatestPa
 	var items []APIRequestsLatestRow
 	for rows.Next() {
 		var i APIRequestsLatestRow
+		if err := rows.Scan(
+			&i.At,
+			&i.KeyID,
+			&i.KeyName,
+			&i.ConnectionID,
+			&i.ClientName,
+			&i.Method,
+			&i.OperationID,
+			&i.Status,
+			&i.Reason,
+			&i.DurationMs,
+			&i.ClientIp,
+			&i.TraceID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const aPIRequestsLatestByConnection = `-- name: APIRequestsLatestByConnection :many
+SELECT r.at, r.key_id, k.name AS key_name, r.connection_id, c.client_name, r.method, r.operation_id, r.status, r.reason,
+       r.duration_ms, r.client_ip, r.trace_id
+FROM identity.api_requests r
+LEFT JOIN identity.api_keys k ON k.id = r.key_id
+LEFT JOIN identity.oauth_connections c ON c.id = r.connection_id
+WHERE r.connection_id = $1 AND r.integration_id = $2
+  AND r.at >= $3::timestamptz AND r.at < $4::timestamptz
+  AND ($5::int IS NULL OR r.status / 100 = $5::int)
+  AND ($6::text IS NULL OR r.reason = $6::text)
+ORDER BY r.at DESC
+LIMIT $7::int
+`
+
+type APIRequestsLatestByConnectionParams struct {
+	ConnectionID  *uuid.UUID
+	IntegrationID uuid.UUID
+	FromAt        time.Time
+	ToAt          time.Time
+	StatusClass   *int32
+	Reason        *string
+	Latest        int32
+}
+
+type APIRequestsLatestByConnectionRow struct {
+	At           time.Time
+	KeyID        *uuid.UUID
+	KeyName      *string
+	ConnectionID *uuid.UUID
+	ClientName   *string
+	Method       string
+	OperationID  string
+	Status       int16
+	Reason       *string
+	DurationMs   int32
+	ClientIp     *string
+	TraceID      *string
+}
+
+// APIRequestsLatestByConnection is APIRequestsLatest for one connection
+// (A18): its newest rows, read in the index's order.
+func (q *Queries) APIRequestsLatestByConnection(ctx context.Context, arg APIRequestsLatestByConnectionParams) ([]APIRequestsLatestByConnectionRow, error) {
+	rows, err := q.db.Query(ctx, aPIRequestsLatestByConnection,
+		arg.ConnectionID,
+		arg.IntegrationID,
+		arg.FromAt,
+		arg.ToAt,
+		arg.StatusClass,
+		arg.Reason,
+		arg.Latest,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []APIRequestsLatestByConnectionRow
+	for rows.Next() {
+		var i APIRequestsLatestByConnectionRow
 		if err := rows.Scan(
 			&i.At,
 			&i.KeyID,

@@ -261,8 +261,12 @@ func (a *Access) exchangeCode(r *http.Request, values url.Values) (tokenResponse
 		if err != nil {
 			return fmt.Errorf("identity: read the connection: %w", err)
 		}
+		live, err := registeredClientLive(ctx, q, c)
+		if err != nil {
+			return err
+		}
 		if c.ClientID != clientID || c.RedirectUri != redirectURI || !pkceMatches(verifier, consumed.CodeChallenge) ||
-			c.RevokedAt != nil || c.ActivatedAt != nil || !c.ExpiresAt.After(now) {
+			c.RevokedAt != nil || c.ActivatedAt != nil || !c.ExpiresAt.After(now) || !live {
 			// The code is spent either way: a wrong verifier does not get a
 			// second try.
 			refusal = invalidGrant("The code does not match the client, the redirect_uri or the code_verifier.")
@@ -415,6 +419,15 @@ func (a *Access) refresh(r *http.Request, values url.Values) (tokenResponse, err
 			refusal = invalidGrant("This workspace no longer admits this client's host.")
 			return nil
 		}
+		// A registered client archived is refused, whatever its connection's
+		// row says (defence in depth: the archive revokes them).
+		if live, err := registeredClientLive(ctx, q, c); err != nil || !live {
+			if err != nil {
+				return err
+			}
+			refusal = dead
+			return nil
+		}
 		// The token is spent, and whatever the connection holds unspent
 		// beside it is superseded: a connection never has two live ones.
 		if err := q.SpendOAuthRefreshTokens(ctx, store.SpendOAuthRefreshTokensParams{ConnectionID: c.ID, Now: now}); err != nil {
@@ -458,6 +471,19 @@ func issueTokens(ctx context.Context, q *store.Queries, c store.IdentityOauthCon
 		AccessToken: access, TokenType: "Bearer", ExpiresIn: max(int(accessUntil.Sub(now).Seconds()), 0),
 		RefreshToken: refreshTok, Scope: strings.Join(c.Scopes, " "),
 	}, nil
+}
+
+// registeredClientLive is whether c's registered client is still registered
+// and not archived; a document's client always is.
+func registeredClientLive(ctx context.Context, q *store.Queries, c store.IdentityOauthConnection) (bool, error) {
+	if c.ClientKind != oauthClientKindRegistered {
+		return true, nil
+	}
+	live, err := q.RegisteredOAuthClientLive(ctx, c.ClientID)
+	if err != nil {
+		return false, fmt.Errorf("identity: read the registered client: %w", err)
+	}
+	return live, nil
 }
 
 func earliest(a, b time.Time) time.Time {

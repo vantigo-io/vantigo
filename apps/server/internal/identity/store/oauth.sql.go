@@ -424,11 +424,16 @@ func (q *Queries) InsertOAuthToken(ctx context.Context, arg InsertOAuthTokenPara
 const listIntegrationOAuthConnections = `-- name: ListIntegrationOAuthConnections :many
 SELECT c.id, c.client_id, c.client_kind, c.client_name, c.client_host, c.scopes, c.authorized_by,
        a.display_name AS authorized_by_name, c.activated_at, c.expires_at, c.last_used_at, c.last_used_ip,
+       c.revoked_at, c.revoke_reason,
        identity.oauth_authorizer_active(c.authorized_by, $1::boolean)::boolean AS authorizer_active
 FROM identity.oauth_connections c
 LEFT JOIN identity.users a ON a.id = c.authorized_by
 WHERE c.integration_id = $2
-  AND c.activated_at IS NOT NULL AND c.revoked_at IS NULL AND c.expires_at > $3::timestamptz
+  AND c.activated_at IS NOT NULL
+  AND (
+      (c.revoked_at IS NULL AND c.expires_at > $3::timestamptz)
+      OR ($4::boolean AND least(coalesce(c.revoked_at, c.expires_at), c.expires_at) > $5::timestamptz)
+  )
 ORDER BY c.activated_at DESC, c.id
 `
 
@@ -436,6 +441,8 @@ type ListIntegrationOAuthConnectionsParams struct {
 	ScimEnabled   bool
 	IntegrationID uuid.UUID
 	Now           time.Time
+	IncludeEnded  bool
+	EndedSince    time.Time
 }
 
 type ListIntegrationOAuthConnectionsRow struct {
@@ -451,14 +458,24 @@ type ListIntegrationOAuthConnectionsRow struct {
 	ExpiresAt        time.Time
 	LastUsedAt       *time.Time
 	LastUsedIp       *string
+	RevokedAt        *time.Time
+	RevokeReason     *string
 	AuthorizerActive bool
 }
 
 // ListIntegrationOAuthConnections is an integration's activated connections
 // that are neither revoked nor expired, newest first (C25), each with who
-// authorized it and whether that person still qualifies (A17).
+// authorized it and whether that person still qualifies (A17); with
+// include_ended, also those that ended (revoked or expired) after
+// ended_since, for the request log's filter (A18).
 func (q *Queries) ListIntegrationOAuthConnections(ctx context.Context, arg ListIntegrationOAuthConnectionsParams) ([]ListIntegrationOAuthConnectionsRow, error) {
-	rows, err := q.db.Query(ctx, listIntegrationOAuthConnections, arg.ScimEnabled, arg.IntegrationID, arg.Now)
+	rows, err := q.db.Query(ctx, listIntegrationOAuthConnections,
+		arg.ScimEnabled,
+		arg.IntegrationID,
+		arg.Now,
+		arg.IncludeEnded,
+		arg.EndedSince,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -479,6 +496,8 @@ func (q *Queries) ListIntegrationOAuthConnections(ctx context.Context, arg ListI
 			&i.ExpiresAt,
 			&i.LastUsedAt,
 			&i.LastUsedIp,
+			&i.RevokedAt,
+			&i.RevokeReason,
 			&i.AuthorizerActive,
 		); err != nil {
 			return nil, err
