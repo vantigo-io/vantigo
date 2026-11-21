@@ -210,9 +210,9 @@ type Config struct {
 	// OAuthEnabled is OAUTH_ENABLED (OAuth connections design C24, A24):
 	// whether api and server mode let an MCP client or app connect by
 	// signing in — the discovery documents, the token endpoint, the consent
-	// page's operations and the access tokens they issue. Defaults off until
-	// the consent page lands; off, every one of them answers 404, an access
-	// token is refused 401, and the connections already made are kept.
+	// page's operations and the access tokens they issue. Defaults on; off,
+	// every one of them answers 404, an access token is refused 401, and the
+	// connections already made are kept.
 	OAuthEnabled bool
 	// OAuthIssuer is the authorization server's issuer (C12, A12): AppOrigin
 	// with a default port dropped, then BasePath, no trailing slash.
@@ -804,7 +804,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.LiveEnabled = boolean(&p, env, "LIVE_ENABLED", true)
 	c.MCPEnabled = boolean(&p, env, "MCP_ENABLED", true)
 	c.IdempotencyEnabled = boolean(&p, env, "IDEMPOTENCY_ENABLED", true)
-	c.OAuthEnabled = boolean(&p, env, "OAUTH_ENABLED", false)
+	c.OAuthEnabled = boolean(&p, env, "OAUTH_ENABLED", true)
 	c.OAuthIssuer, c.OAuthResource, c.OAuthResourceMetadata = oauthURLs(c.AppOrigin, c.BasePath)
 	c.LiveDatabaseURL = databaseURL(&p, env, "LIVE_DATABASE_URL", false)
 

@@ -184,7 +184,9 @@ func TestMCP_WhoReachesIt(t *testing.T) {
 	h := mcpHarness(t)
 	person := h.SignIn(t, "customers:view")
 	r := mcpCall(person, "tools/list", nil)
-	if r.Status != http.StatusUnauthorized || r.Code() != "api_key_required" || r.Header("WWW-Authenticate") != `Bearer realm="vantigo"` || r.Header("Set-Cookie") != "" {
+	// OAuth is on by default, so the challenge names its metadata (OAuth connections design C22).
+	challenge := `Bearer realm="vantigo", resource_metadata="` + oauthResourceMD + `", scope="read write"`
+	if r.Status != http.StatusUnauthorized || r.Code() != "api_key_required" || r.Header("WWW-Authenticate") != challenge || r.Header("Set-Cookie") != "" {
 		t.Errorf("a session: %d %s, Set-Cookie %q", r.Status, r.Body, r.Header("Set-Cookie"))
 	}
 	if r := person.Do(http.MethodGet, "/api/v1/customers", nil); r.Status != http.StatusOK {
