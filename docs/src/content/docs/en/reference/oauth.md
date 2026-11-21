@@ -196,26 +196,36 @@ A person who is not an Owner gets `403` from both.
 
 `<issuer>/oauth/authorize` is a page of the application (`routes/oauth.authorize.tsx`), open
 without a session so it can act on its own. It reads the query string as the browser received
-it, before the application's router can rewrite the address, and posts it unchanged; it never
-builds a redirect of its own and only ever sends the browser to a `redirectTo` the server
-answered.
+it, before the application's router can rewrite the address, posts it unchanged, and puts it
+back in the address bar once the router has rewritten it, so a reload reads the request as sent
+(a `state` of `1e3` stays `1e3`). It never builds a redirect of its own: it only ever sends the
+browser to a `redirectTo` the server answered, and only when that is `https`, or `http` to
+`127.0.0.1`, `[::1]` or `localhost`; anything else is shown as a failure and followed nowhere.
 
-- **No session.** The page stores its path and query in `sessionStorage` under `oauth.return`,
-  with the time, and goes to sign-in. After any sign-in — password, two-factor, passkey, OIDC —
+- **No session, or one that expires** before the preview or the decision (`401`). The page
+  stores its path and query in `sessionStorage` under `oauth.return`, with the time, and goes to
+  sign-in. After any sign-in — password, two-factor, passkey, OIDC —
   the application's root, once its session and MFA-enrolment gates pass, takes the entry and
   loads it again. The entry is removed when it is read and honoured only when it is younger than
   ten minutes and its path is exactly `/oauth/authorize` with a query: no other path, host,
   scheme or fragment. No URL carries a return-to.
-- **An Owner held at MFA enrolment** is sent to enrol, with the same entry, and comes back once
-  enrolled.
-- **A person who is not an Owner** is told to ask an Owner, with Close only; the page calls
-  neither operation, so no document is fetched and nothing is redirected.
+- **A person who is not an Owner** is told to ask an Owner, with Close only, whatever their
+  enrolment; the page calls neither operation, so no document is fetched and nothing is
+  redirected.
+- **An Owner held at MFA enrolment** is sent to the security settings with the entry stamped
+  afresh. While that page holds them it starts the entry's ten minutes again; once the
+  authenticator is on it shows **Continue to the app's request** below the recovery codes, which
+  takes the entry and loads the consent page. It never navigates on its own.
 - **An Owner** sees the server's answer: a refused client with Close only; an error with an
   automatic redirect or a **Return to *host*** button, as `automatic` says; or the consent, with
   the claimed name labelled as a claim beside the two hosts, the name, loopback and first-use
   warnings, no integration preselected, and **Read only** unless **Read and write** is chosen
-  where `maxAccess` allows it. **Approve** and **Deny** post the decision and follow its
-  `redirectTo`.
+  where `maxAccess` allows it. **Approve** and **Deny** post the decision once, however often
+  they are pressed, and follow its `redirectTo`; `409 integration_not_eligible` reads the
+  preview again. A refusal is shown in the page's own words for its OAuth `error` code, with the
+  server's English `message` beside them on an English page; a code the page does not know
+  shows the `message`. **Close** closes the tab where the client opened it, and otherwise
+  goes to the application's start page.
 
 The page is never framed: every response carries `Content-Security-Policy: frame-ancestors
 'none'` and `X-Frame-Options: DENY` (the latter alone under `CSP_REPORT_ONLY`), and the page

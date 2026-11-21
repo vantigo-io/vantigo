@@ -407,10 +407,17 @@ renews its own one-hour token and never sees a key. The contract is
   **Read and write** ([Choose what the agent may do](#choose-what-the-agent-may-do)). One whose
   MCP access is **Off**, or that is disabled, cannot be chosen.
 - You are an **Owner**. When the installation requires multi-factor authentication for
-  administrators, you have enrolled it; if not, Vantigo sends you to enrol and then back.
+  administrators, you have enrolled it. If not, Vantigo sends you to **Settings → Security** to
+  set up an authenticator; once it is on, save the recovery codes it shows and choose
+  **Continue to the app's request** below them to go back to the consent page. Nothing takes
+  you away from the codes on its own.
 - The server can reach the client's host over **outbound HTTPS** — `claude.ai`, `chatgpt.com`
   or the host of whichever client connects. Vantigo fetches the client's published description
-  from there when you are asked to approve it, never from a private or internal address.
+  from there when an Owner opens the connection request, never from a private or internal
+  address; the fetch shows that host the installation's outbound address.
+- **Any client can ask.** Until a later release brings an allow-list of client hosts, any
+  client that publishes a description can send an Owner to the consent page; the Owner's
+  approval is the only gate. Check the hosts on the page before you approve.
 - **Claude and ChatGPT on the web** call your installation from their own servers, so it must
   have a public `https` address. **Claude Code** runs on your computer and can connect to any
   address it can reach, a development instance on `http://localhost` included.
@@ -476,6 +483,11 @@ What else the page can say:
   Vantigo refuses, such as one without PKCE. The button tells the client; Vantigo returns to a
   client's host without a click only once a client of that host has been connected here.
 - **Connecting apps by signing in is switched off** — `OAUTH_ENABLED` is `0`.
+- **The app's return address is not one this page will send you to** — the server answered
+  an address that is neither `https` nor `http` to this computer. Nothing was connected.
+
+If your session expires while the page is open, it sends you to sign in and comes back to the
+request afterwards.
 
 The page cannot be shown inside another site's frame.
 
@@ -518,8 +530,10 @@ shown. The connections are kept and work again when it is switched back on with
 - **The client says the sign-in failed or never opens the browser:** check that the server
   reaches the client's host over HTTPS, and, for Claude or ChatGPT on the web, that the
   installation's address is public `https`.
-- **This app cannot connect:** the client's description could not be fetched or was refused;
-  the reason is under the heading. Try again later, or connect the client with a key.
+- **This app cannot connect:** the client's description could not be fetched or was refused.
+  When the page shows it on opening the request, the explanation names the kind of refusal, and
+  on an English page the server's own reason follows it; refused at **Approve** or **Deny**, it
+  says only that the app cannot connect. Try again later, or connect the client with a key.
 - **The client connected but its calls are refused:** the integration's MCP access is **Off**,
   it is disabled, or the connection is **Inactive**. The **Requests** tab shows the refusal.
 - **A change is refused with `insufficient_scope`:** the connection was approved for **Read

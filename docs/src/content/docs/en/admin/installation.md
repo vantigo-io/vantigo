@@ -1287,5 +1287,19 @@ channel with no stored credentials** no longer sends on `SMTP_*` as a fall-back:
 upgrade, `SMTP_*` stays required for the system mailbox, and rolling the migrations back
 drops the two settings (the choices, not any mail).
 
+**The release with OAuth connections.** It brings `00218_identity_oauth.sql` — the
+connections, their codes and tokens, the cached client descriptions, and the request log's
+`connection_id` beside a now nullable `key_id` — and it is **on by default**. From it the image
+serves the discovery documents under `/.well-known/oauth-*`, the consent page
+`/oauth/authorize` and the token endpoint `POST /api/oauth/token`, and every `401` from
+`/api/mcp` to a request with no bearer carries `resource_metadata`, so a client that can sign in
+starts there instead of reporting a failure. The `identity.api-keys` worker now runs even with
+`IDENTITY_API_KEYS_ENABLED=0`, to prune OAuth's rows. When an Owner opens a connection request,
+the server fetches the client's description over outbound HTTPS from the client's host, which
+shows that host the installation's outbound address. Behind a base path, route
+`/.well-known/oauth-` to Vantigo ([Base path and reverse proxy](#base-path-and-reverse-proxy)).
+`OAUTH_ENABLED=0` in `vantigo.env` switches all of it off
+([API access › Connecting by signing in](/en/admin/api-access/#connecting-by-signing-in)).
+
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).

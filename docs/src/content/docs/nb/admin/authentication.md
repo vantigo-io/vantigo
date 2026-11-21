@@ -5,6 +5,7 @@ sidebar:
   order: 20
 sources:
   - apps/host/frontend/src/lib/oauth-return.ts
+  - apps/host/frontend/src/components/oauth-return-notice.tsx
   - apps/server/internal/identity
   - apps/server/internal/config
   - apps/server/cmd/vantigo
@@ -1151,11 +1152,14 @@ nettleseren til ([API-tilgang › Koble til ved å logge inn](/nb/admin/api-acce
 Øktinformasjonskapselen er `SameSite=Strict`, så den følger ikke med den navigeringen, men
 sidens egne forespørsler går til samme opprinnelse og har den med. Uten økt tar siden vare på
 adressen sin i fanens `sessionStorage` (`oauth.return`) og går til innlogging; etter enhver
-innlogging — passord, tofaktor, passnøkkel, OIDC eller en påtvunget MFA-registrering — går
-applikasjonen tilbake dit når økten er forbi registreringen. Bare den sidens adresse, yngre enn
-ti minutter, følges, og ingen URL har en tilbake-til-adresse, så returen kan ikke sende noen
-andre steder. En eier som holdes ved MFA-registrering, sendes først dit og kommer tilbake på
-samme måte.
+innlogging — passord, tofaktor eller passnøkkel, eller OIDC — går applikasjonen tilbake dit
+ved den første siden den laster. Bare den sidens adresse, yngre enn ti minutter, følges, og
+ingen URL har en tilbake-til-adresse, så returen kan ikke sende noen andre steder. En eier som
+holdes ved MFA-registrering, enten av innloggingen eller av samtykkesiden, sendes i stedet til
+**Innstillinger → Sikkerhet**; oppføringen venter der, med de ti minuttene startet på nytt mens
+siden holder eieren, og når autentiseringsappen er på, tar **Fortsett til appens forespørsel**
+under gjenopprettingskodene den og laster samtykkesiden. Ingenting navigerer bort fra kodene av
+seg selv.
 
 ### Hva som revideres for integrasjoner
 

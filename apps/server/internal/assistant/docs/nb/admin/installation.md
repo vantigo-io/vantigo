@@ -1330,5 +1330,19 @@ lagret legitimasjon** sender ikke lenger på `SMTP_*` som reserveløsning: den e
 oppgraderingen, `SMTP_*` er fortsatt påkrevd for systempostboksen, og å rulle migreringene
 tilbake fjerner de to innstillingene (valgene, ikke noen e-post).
 
+**Utgivelsen med OAuth-tilkoblinger.** Den har `00218_identity_oauth.sql` — tilkoblingene,
+kodene og tokenene deres, de mellomlagrede klientbeskrivelsene, og forespørselsloggens
+`connection_id` ved siden av en `key_id` som nå kan være tom — og den er **på som standard**.
+Fra den serverer imaget oppdagelsesdokumentene under `/.well-known/oauth-*`, samtykkesiden
+`/oauth/authorize` og token-endepunktet `POST /api/oauth/token`, og hvert `401` fra `/api/mcp`
+til en forespørsel uten bærertoken har `resource_metadata`, så en klient som kan logge inn,
+starter der i stedet for å melde feil. Arbeideren `identity.api-keys` kjører nå også med
+`IDENTITY_API_KEYS_ENABLED=0`, for å rydde OAuths rader. Når en eier åpner en forespørsel om
+tilkobling, henter serveren klientens beskrivelse over utgående HTTPS fra klientens vert, noe som
+viser den verten installasjonens utgående adresse. Bak en basesti sendes `/.well-known/oauth-`
+til Vantigo ([Basesti og omvendt proxy](#basesti-og-omvendt-proxy)). `OAUTH_ENABLED=0` i
+`vantigo.env` slår alt dette av
+([API-tilgang › Koble til ved å logge inn](/nb/admin/api-access/#koble-til-ved-å-logge-inn)).
+
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).
