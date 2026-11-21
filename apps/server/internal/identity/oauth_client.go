@@ -274,12 +274,14 @@ func acceptOAuthDocument(clientID, host string, body []byte) (oauthClient, error
 }
 
 // oauthDisplayName is the name a client claims as the consent page shows it
-// (C13): control and bidirectional characters stripped, spaces collapsed, cut
-// at 80 characters.
+// (C13): control and bidirectional characters stripped, spaces collapsed, at
+// most two combining or enclosing marks on a character (so a stack of them
+// cannot paint over the page around the name), cut at 80 characters.
 func oauthDisplayName(name string) string {
+	const maxMarks = 2
 	name = strings.ToValidUTF8(name, "")
 	var b strings.Builder
-	space := false
+	space, marks := false, 0
 	for _, r := range name {
 		switch {
 		case unicode.IsSpace(r):
@@ -287,11 +289,18 @@ func oauthDisplayName(name string) string {
 			continue
 		case unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) || unicode.Is(unicode.Cf, r):
 			continue
+		case unicode.In(r, unicode.Mn, unicode.Me):
+			if b.Len() == 0 || space || marks >= maxMarks {
+				continue
+			}
+			marks++
+			b.WriteRune(r)
+			continue
 		}
 		if space && b.Len() > 0 {
 			b.WriteRune(' ')
 		}
-		space = false
+		space, marks = false, 0
 		b.WriteRune(r)
 	}
 	out := b.String()

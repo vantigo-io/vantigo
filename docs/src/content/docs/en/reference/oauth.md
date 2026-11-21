@@ -174,7 +174,7 @@ applies), neither available to an API key nor to the Assistant:
 - `POST /api/v1/identity/oauth/authorizations/preview` with `{"query": "<the query string>"}`
   answers `client_refused`, `redirect` (with `redirectTo` and whether it is `automatic`) or
   `consent`: the name the client calls itself (control and bidirectional characters stripped,
-  cut at 80 characters), the host Vantigo fetched its document from, the redirect URI's host and
+  at most two combining or enclosing marks on a character, cut at 80 characters), the host Vantigo fetched its document from, the redirect URI's host and
   whether it is loopback, the scopes asked, whether a client of this host has been connected
   before, whether the name it claims contains "Vantigo" or the workspace's name (`APP_TITLE`,
   when it is set), and the integrations with whether each is **eligible** — active, and its MCP
