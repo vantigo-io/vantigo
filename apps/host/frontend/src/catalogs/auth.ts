@@ -53,12 +53,12 @@ const en = {
   "oauth.loading": "Loading",
   "oauth.title": "Connect an app to {{app}}",
   "oauth.callsItself": "The app calls itself",
-  "oauth.documentAt": "Vantigo read its description from",
+  "oauth.documentAt": "{{app}} read its description from",
   "oauth.documentAtLoopback": "Its description is hosted at",
   "oauth.redirectTo": "After you answer, your browser goes to",
   "oauth.nameWarningTitle": "Check who this app is",
   "oauth.nameWarning":
-    "Its name mentions Vantigo or {{app}}, but that is only what it calls itself. What Vantigo verified is the host it read the description from: {{host}}.",
+    "Its name looks like this installation's own ({{app}}), but that is only what it calls itself. What {{app}} verified is the host it read the description from: {{host}}.",
   "oauth.loopbackTitle": "An app on this computer",
   "oauth.loopback":
     "The answer goes to a program on this computer, not to a website. Any program on this computer could be asking: approve only if you just started the connection yourself.",
@@ -70,7 +70,7 @@ const en = {
   "oauth.notEligible_disabled": "disabled",
   "oauth.notEligible_mcp_off": "MCP is off",
   "oauth.noIntegrations":
-    "No integration can be connected: each is disabled or has MCP switched off. Set one up under Workspace → API access first.",
+    "No integration can be connected: there is none, or each is disabled or has MCP switched off. Set one up under Workspace admin › API access first.",
   "oauth.access": "Access",
   "oauth.accessRead": "Read only",
   "oauth.accessReadWrite": "Read and write",
@@ -95,6 +95,18 @@ const en = {
   "oauth.failed": "Something went wrong. Close this page and start the connection again from the app.",
   "oauth.switchedOff": "Connecting apps by signing in is switched off on this installation.",
   "oauth.tooMany": "Too many connection requests in a short time. Wait a minute and try again.",
+  "oauth.error_invalid_client":
+    "The app's description could not be fetched or accepted, or the address it wants to return to is not one it published.",
+  "oauth.error_invalid_request":
+    "The request is incomplete or malformed, for example without PKCE or with a parameter given twice.",
+  "oauth.error_unsupported_response_type": "The app asked for a kind of answer this installation does not give.",
+  "oauth.error_invalid_scope": "The app asked for access this installation does not offer.",
+  "oauth.error_invalid_target": "The app asked for another server than this installation's MCP endpoint.",
+  "oauth.blocked": "The app's return address is not one this page will send you to. Nothing was connected.",
+  "oauth.continueTitle": "An app is waiting for you",
+  "oauth.continueBody":
+    "You were connecting an app when you were asked to set up multi-factor authentication. Save your recovery codes first, then continue.",
+  "oauth.continue": "Continue to the app's request",
   "oauth.forbidden":
     "Your session may not approve connections. Sign in with multi-factor authentication and try again.",
 };
@@ -152,12 +164,12 @@ const nb: { [Key in keyof typeof en]: string } = {
   "oauth.loading": "Laster inn",
   "oauth.title": "Koble en app til {{app}}",
   "oauth.callsItself": "Appen kaller seg",
-  "oauth.documentAt": "Vantigo leste beskrivelsen av den fra",
+  "oauth.documentAt": "{{app}} leste beskrivelsen av den fra",
   "oauth.documentAtLoopback": "Beskrivelsen av den ligger på",
   "oauth.redirectTo": "Når du har svart, går nettleseren til",
   "oauth.nameWarningTitle": "Sjekk hvem denne appen er",
   "oauth.nameWarning":
-    "Navnet nevner Vantigo eller {{app}}, men det er bare det appen kaller seg selv. Det Vantigo har bekreftet, er verten beskrivelsen ble lest fra: {{host}}.",
+    "Navnet ligner installasjonens eget ({{app}}), men det er bare det appen kaller seg selv. Det {{app}} har bekreftet, er verten beskrivelsen ble lest fra: {{host}}.",
   "oauth.loopbackTitle": "En app på denne datamaskinen",
   "oauth.loopback":
     "Svaret går til et program på denne datamaskinen, ikke til et nettsted. Hvilket som helst program på maskinen kan stå bak forespørselen: godkjenn bare hvis du selv nettopp startet tilkoblingen.",
@@ -169,7 +181,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "oauth.notEligible_disabled": "deaktivert",
   "oauth.notEligible_mcp_off": "MCP er av",
   "oauth.noIntegrations":
-    "Ingen integrasjon kan kobles til: hver av dem er deaktivert eller har MCP slått av. Sett opp en under Arbeidsområde → API-tilgang først.",
+    "Ingen integrasjon kan kobles til: det finnes ingen, eller hver av dem er deaktivert eller har MCP slått av. Sett opp en under Administrer arbeidsområde › API-tilgang først.",
   "oauth.access": "Tilgang",
   "oauth.accessRead": "Bare lese",
   "oauth.accessReadWrite": "Lese og skrive",
@@ -194,6 +206,18 @@ const nb: { [Key in keyof typeof en]: string } = {
   "oauth.failed": "Noe gikk galt. Lukk siden og start tilkoblingen på nytt fra appen.",
   "oauth.switchedOff": "Tilkobling av apper ved innlogging er slått av på denne installasjonen.",
   "oauth.tooMany": "For mange forespørsler om tilkobling på kort tid. Vent et minutt og prøv igjen.",
+  "oauth.error_invalid_client":
+    "Beskrivelsen av appen kunne ikke hentes eller godtas, eller adressen den vil tilbake til, er ikke en den har publisert.",
+  "oauth.error_invalid_request":
+    "Forespørselen er ufullstendig eller feilformet, for eksempel uten PKCE eller med en parameter oppgitt to ganger.",
+  "oauth.error_unsupported_response_type": "Appen ba om en type svar denne installasjonen ikke gir.",
+  "oauth.error_invalid_scope": "Appen ba om tilgang denne installasjonen ikke tilbyr.",
+  "oauth.error_invalid_target": "Appen ba om en annen server enn denne installasjonens MCP-endepunkt.",
+  "oauth.blocked": "Appens returadresse er ikke en denne siden sender deg til. Ingenting ble koblet til.",
+  "oauth.continueTitle": "En app venter på deg",
+  "oauth.continueBody":
+    "Du holdt på å koble til en app da du ble bedt om å sette opp flerfaktorautentisering. Lagre gjenopprettingskodene først, og fortsett så.",
+  "oauth.continue": "Fortsett til appens forespørsel",
   "oauth.forbidden": "Økten din kan ikke godkjenne tilkoblinger. Logg inn med flerfaktorautentisering og prøv igjen.",
 };
 
