@@ -10,7 +10,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"sync"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -98,6 +100,7 @@ func ApplyMigrations(ctx context.Context, databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("db: parse connection string: %w", err)
 	}
+	UTCSession(cfg.ConnConfig)
 	connector := newSingleSessionConnector(stdlib.GetConnector(*cfg.ConnConfig))
 	sqlDB := sql.OpenDB(connector)
 	defer func() { _ = sqlDB.Close() }()
@@ -137,4 +140,88 @@ func ApplyMigrations(ctx context.Context, databaseURL string) error {
 	}
 	slog.InfoContext(ctx, "migrations are up to date", "applied", len(results))
 	return nil
+}
+
+// LatestMigration is the highest migration version embedded in this binary:
+// the schema serve waits for in server and worker mode (Kubernetes readiness
+// design KR4).
+func LatestMigration() (int64, error) {
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	if err != nil {
+		return 0, fmt.Errorf("db: embedded migrations: %w", err)
+	}
+	var latest int64
+	for _, e := range entries {
+		v, err := goose.NumericComponent(e.Name())
+		if err != nil {
+			return 0, fmt.Errorf("db: embedded migration %s: %w", e.Name(), err)
+		}
+		latest = max(latest, v)
+	}
+	if latest == 0 {
+		return 0, errors.New("db: no embedded migration")
+	}
+	return latest, nil
+}
+
+// SchemaVersion is the highest migration applied to the database pool
+// reaches, or 0 before the first (goose_db_version does not exist yet).
+func SchemaVersion(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	var v int64
+	err := pool.QueryRow(ctx, `SELECT coalesce(max(version_id), 0) FROM goose_db_version WHERE is_applied`).Scan(&v)
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "42P01" { // undefined_table
+		return 0, nil
+	}
+	return v, err
+}
+
+// SchemaWait configures WaitForSchema. Every and LogEvery default to 2 and
+// 30 seconds.
+type SchemaWait struct {
+	Read     func(context.Context) (int64, error)
+	Want     int64
+	Every    time.Duration
+	LogEvery time.Duration
+	Logger   *slog.Logger
+}
+
+// WaitForSchema returns nil once Read reports at least Want, polling every
+// Every and logging every LogEvery, or ctx's error once ctx ends. A read
+// that fails is logged and polled again: a database that is briefly away is
+// no reason to stop waiting.
+func WaitForSchema(ctx context.Context, w SchemaWait) error {
+	every, logEvery := w.Every, w.LogEvery
+	if every <= 0 {
+		every = 2 * time.Second
+	}
+	if logEvery <= 0 {
+		logEvery = 30 * time.Second
+	}
+	logger := w.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	var lastLog time.Time
+	for {
+		v, err := w.Read(ctx)
+		if err == nil && v >= w.Want {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if time.Since(lastLog) >= logEvery {
+			lastLog = time.Now()
+			if err != nil {
+				logger.WarnContext(ctx, "waiting for the schema: cannot read its version", "want", w.Want, "error", err)
+			} else {
+				logger.InfoContext(ctx, "waiting for the schema to be migrated; run vantigo migrate", "have", v, "want", w.Want)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(every):
+		}
+	}
 }

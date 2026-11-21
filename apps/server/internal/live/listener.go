@@ -10,6 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
 // dial opens one of the hub's two dedicated connections, never from the pool
@@ -30,6 +32,7 @@ func (h *Hub) dial(ctx context.Context) (*pgx.Conn, error) {
 		KeepAliveConfig: net.KeepAliveConfig{Enable: true, Idle: 15 * time.Second, Interval: 5 * time.Second, Count: 3},
 	}
 	cfg.ConnConfig.DialFunc = dialer.DialContext
+	db.UTCSession(cfg.ConnConfig)
 	conn, err := pgx.ConnectConfig(ctx, cfg.ConnConfig)
 	if err != nil {
 		return nil, fmt.Errorf("live: connect: %w", err)

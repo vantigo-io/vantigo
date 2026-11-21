@@ -234,3 +234,27 @@ func waitPresence(t *testing.T, c *client, n int) []map[string]any {
 	t.Fatalf("no presence frame with %d members", n)
 	return nil
 }
+
+// The hub's dedicated connections run in UTC, like the pool's (Kubernetes
+// readiness design KR42), whatever the connection string asks for.
+func TestHub_DialsUTCSessions(t *testing.T) {
+	url := testdb.URL(t)
+	sep := "?"
+	if strings.Contains(url, "?") {
+		sep = "&"
+	}
+	h := &Hub{opts: Options{DatabaseURL: url + sep + "TimeZone=Europe/Oslo"}}
+	ctx := context.Background()
+	conn, err := h.dial(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	var zone string
+	if err := conn.QueryRow(ctx, `SHOW TimeZone`).Scan(&zone); err != nil {
+		t.Fatal(err)
+	}
+	if zone != "UTC" {
+		t.Errorf("SHOW TimeZone = %q, want UTC", zone)
+	}
+}
