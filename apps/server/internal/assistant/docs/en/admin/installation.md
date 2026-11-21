@@ -772,13 +772,108 @@ or not the receipt rule requires one: unconfigured, a receipt upload or download
 answers 503 rather than the process failing to start. See
 [Expenses](/en/reference/expenses/) and [Object storage](/en/admin/object-storage/).
 
-Telemetry is off by default. The standard OTLP variables can be set in `vantigo.env`:
+### Telemetry
+
+Telemetry is off by default. Vantigo exports traces, metrics and logs over OTLP/HTTP to
+an OpenTelemetry collector once an endpoint is set; each signal is exported only when
+`OTEL_EXPORTER_OTLP_ENDPOINT` or its own `OTEL_EXPORTER_OTLP_<SIGNAL>_ENDPOINT` is set.
+The standard variables go in `vantigo.env`:
 
 ```dotenv
-OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-# OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 # OTEL_EXPORTER_OTLP_HEADERS=x-api-key=secret
+# VANTIGO_TENANT_ID=acme
+# OTEL_TRACES_SAMPLER=parentbased_traceidratio
+# OTEL_TRACES_SAMPLER_ARG=0.1
 ```
+
+Only `http/protobuf` is supported: a `grpc` value in any `OTEL_EXPORTER_OTLP_*_PROTOCOL`
+stops the process at start with a message naming the variable. Port 4318 is the
+collector's OTLP/HTTP port; 4317 is its gRPC port and answers nothing Vantigo sends.
+
+**Which tenant.** Set `VANTIGO_TENANT_ID` to the installation's name — the namespace's
+name when it runs in Kubernetes — and every trace, metric and log record carries the
+resource attribute `vantigo.tenant.id`, and every JSON line Vantigo writes to standard
+output carries `tenant`, for a log agent that reads stdout rather than OTLP. The value is
+1–63 characters of `a`–`z`, `0`–`9` and `-`, not starting or ending with `-`; `default`,
+`vantigo-system` and any name starting `kube-` are refused, and the process does not
+start. Unset, the attribute and the field are absent. `OTEL_RESOURCE_ATTRIBUTES` still
+wins over it, as it wins over every attribute Vantigo sets.
+
+**What is exported.**
+
+- A server span for every API request, named after its route (`GET
+  /api/v1/invoices/{id}`, never the path with its IDs), with a span per query beneath it.
+  Health probes, the web app's files and the live socket are not traced.
+- A client span for every call to an outside service — Microsoft Graph, Google, Vipps,
+  Brønnøysund, the AI provider and the rest — with its method, host, port and status, never
+  its path or query string. Vantigo sends no `traceparent` to those services.
+- A span for every cycle of a background worker, `worker <name>`, with its error, or a
+  panic as an exception event, and the metrics `vantigo.worker.cycles` (by `worker` and
+  `outcome`: `ok`, `error`, `panic`), `vantigo.worker.cycle.duration` and, for the
+  workers that claim rows under a lease, `vantigo.worker.claims`.
+- The outbox's backlog, `vantigo.events.backlog` and `vantigo.events.backlog.age`, by
+  `state` (`pending`, `failed`, `dead`, and `unfanned` for events not yet fanned out),
+  from each process that runs workers. Two worker replicas report the same backlog: read
+  it as a maximum, not a sum.
+- The database pool: `vantigo.db.pool.connections` by `state` (`acquired`, `idle`,
+  `constructing`), `vantigo.db.pool.max`, and the counters `vantigo.db.pool.waits` and
+  `vantigo.db.pool.wait_time`. Waits that keep climbing mean `DATABASE_POOL_SIZE` is too
+  small for the traffic, before requests start to time out
+  ([Database connection budget](#database-connection-budget)).
+- Log records, with `trace_id` and `span_id` when they were logged inside a span — on
+  OTLP and on the JSON line alike — so a log line leads to its trace.
+
+No attribute holds a name, an email address, a request or response body, a query string,
+a file name or text a person typed; a person is an opaque ID
+([the attribute policy](/en/contributing/platform-packages/#what-an-attribute-may-hold)).
+
+**Sampling.** `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG` are read as the
+OpenTelemetry SDK reads them; unset, every trace is kept. The listener is public, so a
+`traceparent` header a client sends decides nothing: the request's span is always a new
+trace, sampled by the sampler's own ratio, and the client's context is recorded as a link
+on it. `parentbased_traceidratio` with an argument of `0.1` keeps one request in ten.
+
+**Tail sampling: keep every error.** A ratio sampler decides when a request starts, so it
+drops errors with the rest. To keep every trace that failed and a fraction of the others,
+export everything (`OTEL_TRACES_SAMPLER` unset) and sample in the collector with the
+`tail_sampling` processor of the collector's contrib distribution:
+
+```yaml
+processors:
+  tail_sampling:
+    decision_wait: 10s
+    policies:
+      - name: errors
+        type: status_code
+        status_code: { status_codes: [ERROR] }
+      - name: slow
+        type: latency
+        latency: { threshold_ms: 2000 }
+      - name: the-rest
+        type: probabilistic
+        probabilistic: { sampling_percentage: 10 }
+```
+
+Every span of a trace must reach the same collector instance for this to work; with
+several collectors, put the `loadbalancing` exporter, keyed on the trace ID, in front.
+
+**The tenant as a metric label.** `vantigo.tenant.id` is a resource attribute. Prometheus
+and Mimir keep resource attributes on `target_info`, not on each series, so a dashboard
+that groups by tenant either joins on `target_info` or has the collector copy the
+attribute onto every data point first:
+
+```yaml
+processors:
+  transform/tenant:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["vantigo.tenant.id"], resource.attributes["vantigo.tenant.id"])
+```
+
+Add both processors to the matching pipelines in `service.pipelines`, after
+`memory_limiter` and before `batch`.
 
 ## The books
 

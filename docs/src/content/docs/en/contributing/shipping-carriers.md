@@ -11,8 +11,9 @@ sources:
 is the port between a business module and a carrier (orders design O49), shaped like
 [the payments port](/en/contributing/platform-packages/#the-payments-port): interfaces and
 values only, no SQL — each consumer keeps its shipments in its own schema (module
-boundaries rule 4) — importing no module, only the standard library and
-`internal/buildinfo`. It is in depguard's platform set, and its purity test fails a build
+boundaries rule 4) — importing no module, only the standard library,
+`internal/buildinfo` and `internal/telemetry`, whose `OutboundTransport` every adapter's
+client goes through ([Telemetry](/en/contributing/platform-packages/#telemetry)). It is in depguard's platform set, and its purity test fails a build
 that imports anything else. Orders is its consumer today
 ([Shipping](/en/reference/orders/#shipping)); a webshop's checkout would ask the same
 `Rates` and `PickupPoints`.

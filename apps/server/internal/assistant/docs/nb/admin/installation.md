@@ -796,13 +796,108 @@ uansett om kvitteringsregelen krever en: ukonfigurert svarer en opplasting eller
 nedlasting av kvittering med 503 i stedet for at prosessen nekter å starte. Se
 [Utgifter](/en/reference/expenses/) og [Objektlagring](/nb/admin/object-storage/).
 
-Telemetri er av som standard. De vanlige OTLP-variablene kan settes i `vantigo.env`:
+### Telemetri
+
+Telemetri er av som standard. Vantigo eksporterer spor, måledata og logger over OTLP/HTTP
+til en OpenTelemetry-collector når et endepunkt er satt; hvert signal eksporteres bare når
+`OTEL_EXPORTER_OTLP_ENDPOINT` eller signalets egen `OTEL_EXPORTER_OTLP_<SIGNAL>_ENDPOINT`
+er satt. De vanlige variablene settes i `vantigo.env`:
 
 ```dotenv
-OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-# OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 # OTEL_EXPORTER_OTLP_HEADERS=x-api-key=secret
+# VANTIGO_TENANT_ID=acme
+# OTEL_TRACES_SAMPLER=parentbased_traceidratio
+# OTEL_TRACES_SAMPLER_ARG=0.1
 ```
+
+Bare `http/protobuf` støttes: verdien `grpc` i en `OTEL_EXPORTER_OTLP_*_PROTOCOL` stopper
+prosessen ved oppstart med en melding som navngir variabelen. Port 4318 er collectorens
+OTLP/HTTP-port; 4317 er gRPC-porten og svarer ikke på noe Vantigo sender.
+
+**Hvilken leietaker.** Sett `VANTIGO_TENANT_ID` til installasjonens navn — navnet på
+navnerommet når den kjører i Kubernetes — så bærer hvert spor, hver måling og hver
+loggpost ressursattributtet `vantigo.tenant.id`, og hver JSON-linje Vantigo skriver til
+standard ut bærer `tenant`, for en loggagent som leser stdout i stedet for OTLP. Verdien
+er 1–63 tegn av `a`–`z`, `0`–`9` og `-`, og begynner og slutter ikke med `-`; `default`,
+`vantigo-system` og alle navn som begynner med `kube-` avvises, og prosessen starter ikke.
+Uten verdi mangler både attributtet og feltet. `OTEL_RESOURCE_ATTRIBUTES` går fortsatt
+foran, slik den går foran alle attributter Vantigo setter.
+
+**Hva som eksporteres.**
+
+- Et serverspenn for hver API-forespørsel, oppkalt etter ruten (`GET
+  /api/v1/invoices/{id}`, aldri stien med ID-ene), med et spenn per spørring under seg.
+  Helseprober, nettappens filer og sanntidssokkelen spores ikke.
+- Et klientspenn for hvert kall til en ekstern tjeneste — Microsoft Graph, Google, Vipps,
+  Brønnøysund, KI-leverandøren og de andre — med metode, vert, port og status, aldri sti
+  eller spørrestreng. Vantigo sender ingen `traceparent` til disse tjenestene.
+- Et spenn for hver syklus i en bakgrunnsjobb, `worker <navn>`, med feilen, eller en panikk
+  som en unntakshendelse, og måledataene `vantigo.worker.cycles` (etter `worker` og
+  `outcome`: `ok`, `error`, `panic`), `vantigo.worker.cycle.duration` og, for jobbene som
+  tar rader under en lease, `vantigo.worker.claims`.
+- Utboksens etterslep, `vantigo.events.backlog` og `vantigo.events.backlog.age`, etter
+  `state` (`pending`, `failed`, `dead`, og `unfanned` for hendelser som ennå ikke er
+  fordelt), fra hver prosess som kjører bakgrunnsjobber. To replikaer av `worker`
+  rapporterer det samme etterslepet: les det som et maksimum, ikke en sum.
+- Databasepoolen: `vantigo.db.pool.connections` etter `state` (`acquired`, `idle`,
+  `constructing`), `vantigo.db.pool.max` og tellerne `vantigo.db.pool.waits` og
+  `vantigo.db.pool.wait_time`. Ventetider som fortsetter å stige, betyr at
+  `DATABASE_POOL_SIZE` er for liten for trafikken, før forespørsler begynner å gå ut på tid
+  ([Databasens tilkoblingsbudsjett](#databasens-tilkoblingsbudsjett)).
+- Loggposter, med `trace_id` og `span_id` når de ble logget inne i et spenn — både over
+  OTLP og på JSON-linjen — slik at en logglinje fører til sporet sitt.
+
+Ingen attributter inneholder navn, e-postadresser, innholdet i forespørsler eller svar,
+spørrestrenger, filnavn eller tekst en person har skrevet; en person er en ugjennomsiktig ID
+([attributtreglene](/en/contributing/platform-packages/#what-an-attribute-may-hold)).
+
+**Utvalg.** `OTEL_TRACES_SAMPLER` og `OTEL_TRACES_SAMPLER_ARG` leses slik
+OpenTelemetry-SDK-en leser dem; uten verdi beholdes alle spor. Lytteren er offentlig, så en
+`traceparent`-header en klient sender, avgjør ingenting: forespørselens spenn er alltid et
+nytt spor, valgt ut etter samplerens egen andel, og klientens kontekst registreres som en
+lenke på det. `parentbased_traceidratio` med argumentet `0.1` beholder én forespørsel av ti.
+
+**Haleutvalg: behold alle feil.** En andelsbasert sampler bestemmer seg når forespørselen
+starter, så den forkaster feil sammen med resten. For å beholde hvert spor som feilet og en
+andel av de andre, eksporter alt (`OTEL_TRACES_SAMPLER` uten verdi) og velg ut i
+collectoren med prosessoren `tail_sampling` fra collectorens contrib-distribusjon:
+
+```yaml
+processors:
+  tail_sampling:
+    decision_wait: 10s
+    policies:
+      - name: errors
+        type: status_code
+        status_code: { status_codes: [ERROR] }
+      - name: slow
+        type: latency
+        latency: { threshold_ms: 2000 }
+      - name: the-rest
+        type: probabilistic
+        probabilistic: { sampling_percentage: 10 }
+```
+
+Alle spenn i et spor må nå den samme collector-instansen for at dette skal virke; med flere
+collectorer setter du eksportøren `loadbalancing`, nøklet på spor-ID-en, foran.
+
+**Leietakeren som etikett på måledata.** `vantigo.tenant.id` er et ressursattributt.
+Prometheus og Mimir legger ressursattributter på `target_info`, ikke på hver serie, så et
+dashbord som grupperer etter leietaker, må enten slå sammen med `target_info` eller la
+collectoren kopiere attributtet til hvert datapunkt først:
+
+```yaml
+processors:
+  transform/tenant:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["vantigo.tenant.id"], resource.attributes["vantigo.tenant.id"])
+```
+
+Legg begge prosessorene til i de aktuelle løpene i `service.pipelines`, etter
+`memory_limiter` og før `batch`.
 
 ## Regnskapet
 
