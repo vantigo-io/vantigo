@@ -14,6 +14,9 @@ export const authorizePath = "/oauth/authorize";
 export const oauthReturnKey = "oauth.return";
 /** How long the entry is honoured (C13). */
 export const oauthReturnMaxAgeMs = 10 * 60_000;
+/** How the security page's way back leaves it, in one place the tests can watch. */
+export const oauthReturnNavigation = { assign: (to: string) => window.location.assign(to) };
+
 /** The longest query the consent operations take (A9), with room for the path. */
 const maxReturnLength = authorizePath.length + 1 + 8192;
 
@@ -30,19 +33,8 @@ export const rememberOAuthReturn = (query: string, storage: Storage = sessionSto
   }
 };
 
-/**
- * Takes the entry, which is removed whatever it holds, and answers the path to
- * go back to when it is the consent page's and young enough; otherwise
- * undefined.
- */
-export const takeOAuthReturn = (storage: Storage = sessionStorage, now: number = Date.now()): string | undefined => {
-  let raw: string | null;
-  try {
-    raw = storage.getItem(oauthReturnKey);
-    storage.removeItem(oauthReturnKey);
-  } catch {
-    return undefined;
-  }
+/** The path an entry holds when it is the consent page's and young enough; otherwise undefined. */
+const validReturn = (raw: string | null, now: number): string | undefined => {
   if (!raw) return undefined;
   let entry: unknown;
   try {
@@ -61,6 +53,48 @@ export const takeOAuthReturn = (storage: Storage = sessionStorage, now: number =
   return path;
 };
 
+const read = (storage: Storage): string | null => {
+  try {
+    return storage.getItem(oauthReturnKey);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Takes the entry, which is removed whatever it holds, and answers the path to
+ * go back to when it is the consent page's and young enough; otherwise
+ * undefined.
+ */
+export const takeOAuthReturn = (storage: Storage = sessionStorage, now: number = Date.now()): string | undefined => {
+  const raw = read(storage);
+  try {
+    storage.removeItem(oauthReturnKey);
+  } catch {
+    return undefined;
+  }
+  return validReturn(raw, now);
+};
+
+/** Whether a valid entry is waiting, leaving it where it is. */
+export const peekOAuthReturn = (storage: Storage = sessionStorage, now: number = Date.now()): string | undefined =>
+  validReturn(read(storage), now);
+
+/**
+ * Starts a valid entry's ten minutes again: the security page does so while it
+ * holds a person at MFA enrolment, so the time spent enrolling does not use up
+ * the way back. An entry that is not valid is left to expire.
+ */
+export const touchOAuthReturn = (storage: Storage = sessionStorage, now: number = Date.now()) => {
+  const path = peekOAuthReturn(storage, now);
+  if (!path) return;
+  try {
+    storage.setItem(oauthReturnKey, JSON.stringify({ path, at: now }));
+  } catch {
+    /* storage refused: the entry keeps its first time */
+  }
+};
+
 /**
  * The query string the consent page was loaded with, as the browser received
  * it. The router rewrites a URL's search into its own canonical form when it
@@ -77,3 +111,21 @@ export const captureAuthorizeQuery = (location: Pick<Location, "pathname" | "sea
 
 /** The consent page's query without its question mark: the one captured at load, else the address bar's. */
 export const authorizeQuery = (): string => loadedQuery ?? window.location.search.replace(/^\?/, "");
+
+/**
+ * Puts the query back in the address bar exactly as the client sent it, once
+ * the router has rewritten it into its canonical form (`state=1e3` read as a
+ * number and written back as `1000`, `%20` as `+`), so a reload captures the
+ * request unchanged. The router is not told: the page never navigates within
+ * the application, and a reload or a full navigation reads the address afresh.
+ */
+export const restoreAuthorizeAddress = (
+  query: string,
+  location: Pick<Location, "pathname" | "search" | "hash"> = window.location,
+  history: Pick<History, "state" | "replaceState"> = window.history,
+) => {
+  if (appPathname(location.pathname) !== authorizePath) return;
+  const search = query ? `?${query}` : "";
+  if (location.search === search) return;
+  history.replaceState(history.state, "", `${location.pathname}${search}${location.hash}`);
+};

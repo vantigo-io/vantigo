@@ -21,6 +21,7 @@ import {
 } from "../../api/account";
 import { sessionQueryKey } from "../../api/auth";
 import { MfaEnrolmentNotice } from "../../components/mfa-enrolment-notice";
+import { OAuthReturnNotice } from "../../components/oauth-return-notice";
 import { StationPinSection } from "../../components/station-credentials";
 import { enabledModuleKeys } from "../../lib/enabled-modules";
 import { isOidcError, message, mfaKey, notify, passkeyKey } from "./-helpers";
@@ -239,6 +240,8 @@ function SecurityForm() {
               {recovery.join(" · ")}
             </Alert>
           )}
+          {/* The way back to an app's connection request an enrolment interrupted, below the codes (OAuth A27). */}
+          <OAuthReturnNotice />
         </Stack>
       </PageSection>
       <PageSection>

@@ -12,6 +12,9 @@ import {
 
 const statusOf = (error: unknown) => (error as { status?: number } | null)?.status;
 
+/** A name the client chose, kept to its box however it is built. */
+const clipped = { overflowWrap: "anywhere", overflow: "hidden" } as const;
+
 /**
  * An integration's connected apps on its Overview, under MCP (OAuth
  * connections design C25, A17): each MCP client or app an Owner connected by
@@ -44,7 +47,11 @@ export const IntegrationConnections = ({ integrationId, archived }: { integratio
   const when = (value: string) => formatters.formatDate(value, { dateStyle: "medium", timeStyle: "short" });
   const confirmRevoke = (connection: IntegrationConnection) =>
     modals.openConfirmModal({
-      title: t("apiAccess.revokeConnectionTitle", { name: connection.clientName }),
+      title: (
+        <Text fw={600} lineClamp={2} style={clipped}>
+          {t("apiAccess.revokeConnectionTitle", { name: connection.clientName })}
+        </Text>
+      ),
       children: <Text size="sm">{t("apiAccess.revokeConnectionBody", { host: connection.clientHost })}</Text>,
       labels: { confirm: t("apiAccess.revoke"), cancel: t("common.cancel") },
       confirmProps: { color: "red" },
@@ -86,7 +93,9 @@ export const IntegrationConnections = ({ integrationId, archived }: { integratio
                   <Table.Tr key={connection.id} data-connection={connection.id}>
                     <Table.Td>
                       <Stack gap={4}>
-                        <Text fw={600}>{connection.clientName}</Text>
+                        <Text fw={600} lineClamp={2} maw={280} style={clipped}>
+                          {connection.clientName}
+                        </Text>
                         <Code>{connection.clientHost}</Code>
                         {connection.status === "active" ? (
                           <Badge color="teal" variant="light">
