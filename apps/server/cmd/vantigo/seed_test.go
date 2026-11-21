@@ -104,7 +104,11 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 			'products:products-view', 'products:pricing-view', 'orders:access')`, 6},
 		{"identity.api_keys", "SELECT count(*) FROM identity.api_keys WHERE permissions IS NULL AND NOT read_only", 1},
 		// Its day of request log rows (delivery B), seeded once.
-		{"identity.api_requests", "SELECT count(*) FROM identity.api_requests", 210},
+		{"identity.api_requests", "SELECT count(*) FROM identity.api_requests WHERE key_id IS NOT NULL", 210},
+		// The registered client, its connection and its six requests (OAuth connections C).
+		{"identity.oauth_clients", "SELECT count(*) FROM identity.oauth_clients WHERE name = 'VS Code'", 1},
+		{"identity.oauth_connections", "SELECT count(*) FROM identity.oauth_connections WHERE client_kind = 'registered' AND activated_at IS NOT NULL", 1},
+		{"identity.api_requests connected", "SELECT count(*) FROM identity.api_requests WHERE connection_id IS NOT NULL", 6},
 		{"identity.profile_avatars", "SELECT count(*) FROM identity.profile_avatars WHERE content_type = 'image/jpeg'", demoUserCount},
 		{"staff.people", "SELECT count(*) FROM staff.people", demoUserCount},
 		// The companies, and the person the eFaktura demo bills (invoices phase 6 D10).

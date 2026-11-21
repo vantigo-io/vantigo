@@ -80,11 +80,48 @@ func TestSeedDemoIntegration_ADayOfRequestsOnce(t *testing.T) {
 			count(*) FILTER (WHERE r.key_id IN (SELECT id FROM identity.api_keys)),
 			count(*) FILTER (WHERE r.reason IS NOT NULL),
 			count(*) FILTER (WHERE r.at < $1)
-		FROM identity.api_requests r JOIN identity.integrations i ON i.user_id = r.integration_id WHERE i.name = $2`,
+		FROM identity.api_requests r JOIN identity.integrations i ON i.user_id = r.integration_id WHERE i.name = $2 AND r.connection_id IS NULL`,
 		now.Add(-25*time.Hour), demoIntegrationName).Scan(&rows, &keyed, &refused, &oldest); err != nil {
 		t.Fatal(err)
 	}
 	if rows != 210 || keyed != rows || refused != 5 || oldest != 0 {
 		t.Errorf("%d rows, %d naming the key, %d refused, %d older than a day; want 210 of the day, all keyed, 5 refused", rows, keyed, refused, oldest)
+	}
+}
+
+// TestSeedDemoOAuth_AClientAndAConnectionOnce: the demo registers VS Code,
+// connects it to the demo integration as the demo Owner with a few requests
+// in the log, and a rerun adds nothing.
+func TestSeedDemoOAuth_AClientAndAConnectionOnce(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool, _ := testdb.Migrated(t)
+	now := time.Date(2026, time.November, 21, 9, 0, 0, 0, time.UTC)
+	owner := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO identity.users (id, email, normalized_email, email_confirmed, display_name, kind, version, created_at, updated_at)
+		VALUES ($1, $2, upper($2), true, 'Demo Owner', 'person', $3, $4, $4)`, owner, demoOwnerEmail, uuid.New(), now); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := &config.Config{AppHostname: "erp.example.com"}
+	for range 2 {
+		if err := seedDemoIntegration(ctx, pool, logger, cfg, io.Discard, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var clients, connections, requests int
+	var clientID string
+	if err := pool.QueryRow(ctx, `SELECT count(*), min(client_id) FROM identity.oauth_clients WHERE name = $1`, demoOAuthClientName).Scan(&clients, &clientID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM identity.oauth_connections WHERE client_id = $1 AND client_kind = 'registered'
+		AND authorized_by = $2 AND activated_at IS NOT NULL`, clientID, owner).Scan(&connections); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM identity.api_requests WHERE connection_id IS NOT NULL AND key_id IS NULL`).Scan(&requests); err != nil {
+		t.Fatal(err)
+	}
+	if clients != 1 || connections != 1 || requests != 6 || len(clientID) != 28 {
+		t.Errorf("%d clients (%q), %d connections, %d requests; want one, one and six", clients, clientID, connections, requests)
 	}
 }
