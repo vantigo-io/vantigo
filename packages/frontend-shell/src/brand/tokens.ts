@@ -5,7 +5,16 @@
  * the brand's theme and compares every variable, so a Mantine upgrade that changes a rule fails
  * instead of drifting.
  */
-import { BRAND_ALGORITHM, type BrandScale, BrandScaleError, generateScale, WHITE } from "./scale";
+import {
+  BRAND_ALGORITHM,
+  type BrandScale,
+  BrandScaleError,
+  DARK_TINT_HOVER_PERCENT,
+  darkTint,
+  generateScale,
+  overCard,
+  WHITE,
+} from "./scale";
 
 export type BrandRadius = "xs" | "sm" | "md" | "lg" | "xl";
 export const BRAND_RADII: readonly BrandRadius[] = ["xs", "sm", "md", "lg", "xl"];
@@ -103,20 +112,6 @@ const withAlpha = (hex: string, a: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 };
 
-/** Mantine's `darken()`: each channel `Math.round(c * (1 - alpha))`. */
-const darkenChannel = (c: number, alpha: number): number => Math.round(c * (1 - alpha));
-
-const darkenedRgba = (hex: string, alpha: number): string => {
-  const [r, g, b] = channels(hex);
-  return `rgba(${darkenChannel(r, alpha)}, ${darkenChannel(g, alpha)}, ${darkenChannel(b, alpha)}, 1)`;
-};
-
-const darkenedHex = (hex: string, alpha: number): string => {
-  const [r, g, b] = channels(hex);
-  const h = (n: number) => darkenChannel(n, alpha).toString(16).padStart(2, "0");
-  return `#${h(r)}${h(g)}${h(b)}`;
-};
-
 /** The scale and filled-text colour of a primary; throws `BrandScaleError` like `generateScale`. */
 export function scaleOf(primary: string): BrandScale {
   if (primary.toLowerCase() === BUILTIN_PRIMARY) {
@@ -157,14 +152,14 @@ export function computeTokens(primary: string, radius: BrandRadius): BrandTokens
     shades: s,
     filledText: res.filledText,
     link: s[3],
-    subtleBg: darkenedHex(s[9], 0.5),
+    subtleBg: darkTint(s[5]),
     derived: {
       "--mantine-color-vantigo-text": "var(--mantine-color-vantigo-4)",
       "--mantine-color-vantigo-filled": "var(--mantine-color-vantigo-6)",
       "--mantine-color-vantigo-filled-hover": "var(--mantine-color-vantigo-7)",
-      "--mantine-color-vantigo-light": darkenedRgba(s[9], 0.5),
-      "--mantine-color-vantigo-light-hover": darkenedRgba(s[9], 0.3),
-      "--mantine-color-vantigo-light-color": "var(--mantine-color-vantigo-0)",
+      "--mantine-color-vantigo-light": darkTint(s[5]),
+      "--mantine-color-vantigo-light-hover": overCard(s[5], DARK_TINT_HOVER_PERCENT),
+      "--mantine-color-vantigo-light-color": "var(--mantine-color-vantigo-1)",
       "--mantine-color-vantigo-outline": "var(--mantine-color-vantigo-2)",
       "--mantine-color-vantigo-outline-hover": withAlpha(s[2], 0.05),
       "--mantine-primary-color-contrast": contrastVar(res.filledText),

@@ -1,7 +1,7 @@
 // Command logo-dark derives the dark-background variant of the Vantigo logo.
 //
 // The logo is a navy-to-mint "V". Its navy end almost vanishes on the dark
-// theme's surface (#1c1f32), so this lightens the dark tones and leaves the
+// theme's surface (#191b24), so this lightens the dark tones and leaves the
 // mint as it is. The variant is committed next to the original; regenerate it
 // after a change to logo.png:
 //

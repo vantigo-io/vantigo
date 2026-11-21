@@ -207,7 +207,7 @@ func TestBrand_TheDefaultBrandExistsFromTheFirstMountAndIsVantigos(t *testing.T)
 	if r.status != http.StatusOK || p.V != 1 || p.Source != "default" || p.Title != "Vantigo" || p.Tokens.Radius != "calc(0.5rem * var(--mantine-scale))" {
 		t.Fatalf("GET /brand: status %d body %s", r.status, r.body)
 	}
-	if p.Tokens.Dark.Derived["--mantine-color-vantigo-light"] != "rgba(25, 23, 65, 1)" {
+	if p.Tokens.Dark.Derived["--mantine-color-vantigo-light"] != "#2b2d55" {
 		t.Errorf("dark light variant = %q", p.Tokens.Dark.Derived["--mantine-color-vantigo-light"])
 	}
 	if cc := r.headers.Get("Cache-Control"); cc != "private, no-store" || r.headers.Get("ETag") == "" || !strings.Contains(r.headers.Get("Vary"), "Cookie") {

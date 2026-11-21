@@ -5,7 +5,8 @@
  * The semantic tokens below are the one place a page, surface, text or link
  * colour is decided for each colour scheme. Styles use them (or a Mantine
  * variable) instead of colour literals. The dark values match the `dark` scale
- * in theme.ts. Dimmed text, borders and the dark tint come from Mantine's own
+ * in theme.ts: the page is its shade 8, a surface 7 and a raised surface 6, each
+ * a step lighter than what it lies on, since a shadow does not show on dark. Dimmed text, borders and the dark tint come from Mantine's own
  * variables, which switch with the scheme, so they cannot drift from its
  * components. The link and the tinted background are the brand's shades
  * (brands design B2): a brand changes them with its primary colour.
@@ -13,6 +14,7 @@
 :root {
   --vantigo-body-bg: #f7f8fc;
   --vantigo-surface: #ffffff;
+  --vantigo-raised: #ffffff;
   --vantigo-text: #182033;
   --vantigo-text-dimmed: var(--mantine-color-dimmed);
   --vantigo-border: var(--mantine-color-default-border);
@@ -22,9 +24,10 @@
 }
 
 :root[data-mantine-color-scheme="dark"] {
-  --vantigo-body-bg: #15182a;
-  --vantigo-surface: #1c1f32;
-  --vantigo-text: #dde1ef;
+  --vantigo-body-bg: #0d0f14;
+  --vantigo-surface: #191b24;
+  --vantigo-raised: #23262f;
+  --vantigo-text: #dfe2ea;
   --vantigo-link: var(--mantine-color-vantigo-3);
   --vantigo-subtle-bg: var(--mantine-color-vantigo-light);
   color-scheme: dark;
@@ -34,6 +37,39 @@ body {
   margin: 0;
   background: var(--vantigo-body-bg);
   color: var(--vantigo-text);
+}
+
+/* What floats above a card is one step lighter than the card in dark, where its shadow does not
+   show. In light the raised surface is the surface, so nothing changes there. */
+:root[data-mantine-color-scheme="dark"] .mantine-Popover-dropdown,
+:root[data-mantine-color-scheme="dark"] .mantine-Menu-dropdown,
+:root[data-mantine-color-scheme="dark"] .mantine-HoverCard-dropdown,
+:root[data-mantine-color-scheme="dark"] .mantine-Combobox-dropdown {
+  background-color: var(--vantigo-raised);
+}
+
+/* In dark the active navigation link carries a bar in the brand colour as well as its tint, and a
+   heavier label, so the place a person is in does not rest on a difference of shade alone. */
+:root[data-mantine-color-scheme="dark"] .vantigo-nav-link:where([data-active]) {
+  position: relative;
+}
+
+:root[data-mantine-color-scheme="dark"] .vantigo-nav-link:where([data-active])::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  background: var(--mantine-color-vantigo-4);
+}
+
+:root[data-mantine-color-scheme="dark"] .vantigo-nav-link:where([data-active]) .mantine-NavLink-label {
+  font-weight: 500;
+}
+
+:root[data-mantine-color-scheme="dark"] .vantigo-nav-link:where([data-active]) .mantine-NavLink-section {
+  color: var(--mantine-color-vantigo-3);
 }
 
 /* The sign-in page changing brand as an e-mail address is typed (brands design B26): colours, borders and

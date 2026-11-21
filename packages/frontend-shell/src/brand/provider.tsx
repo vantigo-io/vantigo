@@ -2,7 +2,7 @@ import { MantineProvider, type MantineProviderProps, useComputedColorScheme } fr
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { appConfig, appUrl } from "../app-config";
 import { vantigoLogo, vantigoLogoDark } from "../logo";
-import { createVantigoTheme } from "../theme";
+import { createVantigoTheme, vantigoCssVariablesResolver } from "../theme";
 import { clearBrandMirror, readBrandMirror, understands, writeBrandMirror } from "./mirror";
 import { brandRefetchDelay } from "./refetch";
 import { WHITE } from "./scale";
@@ -294,7 +294,7 @@ export function useBrandTheme() {
  */
 export function BrandedMantineProvider(props: Omit<MantineProviderProps, "theme">) {
   const theme = useBrandTheme();
-  return <MantineProvider {...props} theme={theme} />;
+  return <MantineProvider cssVariablesResolver={vantigoCssVariablesResolver} {...props} theme={theme} />;
 }
 
 /** The brand mark for the current colour scheme, ready for an `<img>`. */

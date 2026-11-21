@@ -227,6 +227,11 @@ klikk. En veldig lys hovedfarge kan feile lenkene, fordi de trenger en mørkere 
 hovedfargen selv. Hover-fargen på en knapp med svart tekst holdes mørk nok til å leses, så en klar
 rød, oransje eller blå feiler den ikke.
 
+I mørk modus er en tonet bakgrunn, den bak det aktive valget i navigasjonen, bak ikonet til en app
+i appvelgeren og i en tonet tabellrad, merkevarens farge lagt lett over kortet, så den alltid er
+litt lysere enn det den ligger på. En merkevare som ble publisert før denne regelen, beholder den
+mørkere tonen den ble publisert med til den publiseres på nytt.
+
 Å publisere et utkast som feiler gjennom API-et avvises med `422 brand_contrast` og navngir parene
 som feiler; bruk den foreslåtte naboen eller velg en mørkere farge.
 

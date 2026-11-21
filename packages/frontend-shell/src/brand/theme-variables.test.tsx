@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { MantineProvider } from "@mantine/core";
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { createVantigoTheme, vantigoTheme } from "../theme";
+import { createVantigoTheme, vantigoCssVariablesResolver, vantigoTheme } from "../theme";
 import golden from "./brand-tokens.golden.json";
 import { type BrandTokens, builtinPayload, RADIUS_VALUES } from "./tokens";
 
@@ -37,13 +37,18 @@ const MANTINE_DEFAULTS: Record<string, string> = {
 
 const mount = (tokens: BrandTokens) =>
   render(
-    <MantineProvider env="test" theme={createVantigoTheme({ tokens })}>
+    <MantineProvider
+      env="test"
+      theme={createVantigoTheme({ tokens })}
+      cssVariablesResolver={vantigoCssVariablesResolver}
+    >
       <span />
     </MantineProvider>,
   );
 
-// B36: the server generates the variables Mantine derives from the shades; a Mantine upgrade that changes
-// a rule must fail here instead of drifting.
+// B36: the server generates the variables Mantine derives from the shades, with the shell's own rule for
+// the dark tint (vantigoCssVariablesResolver); a Mantine upgrade that changes a rule must fail here instead
+// of drifting.
 describe("the brand payload against Mantine", () => {
   for (const b of brands) {
     it(`derives the variables the server generated for ${b.name}`, () => {

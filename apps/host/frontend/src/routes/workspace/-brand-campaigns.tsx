@@ -448,7 +448,7 @@ const CampaignEditor = ({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        background: slot === "mark_dark" ? "#15182a" : "#f7f8fc",
+                        background: slot === "mark_dark" ? "#0d0f14" : "#f7f8fc",
                         borderRadius: 6,
                       }}
                     >

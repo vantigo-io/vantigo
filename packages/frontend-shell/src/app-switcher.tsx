@@ -78,7 +78,10 @@ export const AppSwitcher = ({ apps }: { apps: readonly SwitcherApp[] }) => {
                   gap: 6,
                   minWidth: 0,
                   borderRadius: "var(--mantine-radius-md)",
-                  background: app.current ? "var(--mantine-primary-color-light)" : undefined,
+                  // The current app is a filled icon on a quiet tile: the brand tint in light, a neutral step in dark.
+                  background: app.current
+                    ? "light-dark(var(--mantine-primary-color-light), var(--mantine-color-dark-5))"
+                    : undefined,
                   cursor: inert ? "default" : "pointer",
                   opacity: disabled ? 0.5 : undefined,
                 }}
@@ -88,6 +91,16 @@ export const AppSwitcher = ({ apps }: { apps: readonly SwitcherApp[] }) => {
                   radius="md"
                   variant={app.current ? "filled" : "light"}
                   color={disabled ? "gray" : undefined}
+                  // The dropdown is a raised surface in dark, so a tile takes the stronger tint to stand off it.
+                  style={
+                    app.current || disabled
+                      ? undefined
+                      : {
+                          background:
+                            "light-dark(var(--mantine-primary-color-light), var(--mantine-primary-color-light-hover))",
+                          color: "light-dark(var(--mantine-primary-color-light-color), var(--mantine-color-vantigo-2))",
+                        }
+                  }
                 >
                   <app.icon size={22} stroke={1.5} />
                 </ThemeIcon>

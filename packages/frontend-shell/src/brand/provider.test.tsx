@@ -80,7 +80,7 @@ describe("the brand provider", () => {
     const mirror = JSON.parse(window.localStorage.getItem(BRAND_MIRROR_KEY) as string);
     expect(mirror).toMatchObject({ v: 1, algorithm: BRAND_ALGORITHM, userId: "user-1", title: "Acme Portal" });
     expect(mirror.light["--mantine-color-vantigo-6"]).toBe("#0f766e");
-    expect(mirror.dark["--mantine-color-vantigo-light"]).toMatch(/^rgba\(/);
+    expect(mirror.dark["--mantine-color-vantigo-light"]).toMatch(/^#[0-9a-f]{6}$/);
   });
 
   it("asks for the public brand when nobody is signed in, and clears the mirror", async () => {

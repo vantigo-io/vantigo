@@ -99,6 +99,8 @@ const renderNavSections = (
             label={t(item.label)}
             leftSection={<item.icon size={18} stroke={1.5} />}
             active={item === active}
+            // theme.css marks the active link in dark with a bar and a heavier label.
+            className="vantigo-nav-link"
             onClick={close}
           />
         ))}

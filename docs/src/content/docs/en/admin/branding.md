@@ -220,6 +220,11 @@ click. A very light primary can fail the links, because they need a darker colou
 itself. The hover colour of a button with black text is kept dark enough to read, so a bright red,
 orange or blue does not fail it.
 
+In dark mode a tinted background, the one behind the active entry in the navigation, an app's icon
+in the app switcher and a tinted table row, is the brand's colour laid lightly over the card, so it
+is always a little lighter than what it lies on. A brand published before this rule keeps the darker
+tint it was published with until it is published again.
+
 Publishing a failing draft through the API is refused `422 brand_contrast` and names the failing
 pairs; use the suggested neighbour or choose a darker colour.
 

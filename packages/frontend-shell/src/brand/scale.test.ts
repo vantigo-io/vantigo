@@ -104,10 +104,10 @@ describe("the filled text and the contrast", () => {
     expect(contrast("#4f46e5", "#ffffff")).toBe(contrast("#ffffff", "#4f46e5"));
   });
 
-  it("halves shade 9 for the dark tint, rounding half up", () => {
-    expect(darkTint("#000000")).toBe("#000000");
-    expect(darkTint("#ffffff")).toBe("#808080");
-    expect(darkTint("#0102ff")).toBe("#010180");
+  it("lays shade 5 over the dark card for the dark tint, rounding half up", () => {
+    expect(darkTint("#191b24")).toBe("#191b24");
+    expect(darkTint("#ffffff")).toBe("#505259");
+    expect(darkTint("#6366f1")).toBe("#2b2d55");
   });
 
   it("checks the ten pairs of B4", () => {
@@ -124,7 +124,7 @@ describe("the filled text and the contrast", () => {
       ["dark", "filledHover", "#ffffff", s[7]],
       ["dark", "linkPage", s[3], PAGE_DARK],
       ["dark", "linkCard", s[3], CARD_DARK],
-      ["dark", "linkTint", s[3], darkTint(s[9])],
+      ["dark", "linkTint", s[3], darkTint(s[5])],
     ]);
     expect(passes(checks)).toBe(true);
   });

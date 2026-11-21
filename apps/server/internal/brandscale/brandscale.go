@@ -25,8 +25,10 @@ import (
 // Algorithm is the version of the constants below. It is stored with every
 // published token set; changing any constant is a new version, and old sets
 // are recomputed only by an explicit admin action (B3.8). Version 2 keeps the
-// filled text readable on the hover colour (shade 7, B3.9).
-const Algorithm = 2
+// filled text readable on the hover colour (shade 7, B3.9). Version 3 is the
+// dark scheme's slate page and card, and a dark tint that is shade 5 over the
+// card instead of shade 9 darkened by half (DarkTint).
+const Algorithm = 3
 
 // The accepted lightness of the primary (B3.3) and the AA ratio for text.
 const (

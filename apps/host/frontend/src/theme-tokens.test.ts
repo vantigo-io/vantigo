@@ -33,7 +33,7 @@ describe("theme.css", () => {
 
   it("defines every token the shell exports as vantigoTokens, for light", () => {
     const exported = [...themeTs.matchAll(/"var\((--vantigo-[\w-]+)\)"/g)].map((m) => m[1]);
-    expect(exported).toHaveLength(7);
+    expect(exported).toHaveLength(8);
     for (const name of exported) expect(light, `${name} in light`).toHaveProperty([name]);
   });
 
@@ -41,6 +41,7 @@ describe("theme.css", () => {
     for (const name of [
       "--vantigo-body-bg",
       "--vantigo-surface",
+      "--vantigo-raised",
       "--vantigo-text",
       "--vantigo-link",
       "--vantigo-subtle-bg",
@@ -63,6 +64,9 @@ describe("theme.css", () => {
     expect(darkScale).toHaveLength(10);
     expect(dark["--vantigo-body-bg"]).toBe(darkScale[8]);
     expect(dark["--vantigo-surface"]).toBe(darkScale[7]);
+    // What floats above a card is one step lighter in dark; in light it is the surface.
+    expect(dark["--vantigo-raised"]).toBe(darkScale[6]);
+    expect(light["--vantigo-raised"]).toBe(light["--vantigo-surface"]);
     expect(dark["--vantigo-text"]).toBe(darkScale[0]);
     // The brand's shade 3: shade 8 is too dark for a link on dark. A brand changes it (brands design B2).
     expect(dark["--vantigo-link"]).toBe("var(--mantine-color-vantigo-3)");

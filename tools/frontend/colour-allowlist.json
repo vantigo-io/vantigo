@@ -96,11 +96,6 @@
     "reason": "--mantine-primary-color-contrast: the filled text colour the brand chose, white or black"
   },
   {
-    "path": "packages/frontend-shell/src/brand/tokens.ts",
-    "pattern": "\"--mantine-color-vantigo-light-color\": \"var\\(--mantine-color-vantigo-0\\)\"",
-    "reason": "Mantine's own dark 'light-color' variable (shade 0), mirrored so the stylesheet paints it before the theme mounts"
-  },
-  {
     "path": "packages/frontend-shell/src/theme.css",
     "pattern": "^\\s*--vantigo-subtle-bg: var\\(--mantine-color-vantigo-0\\);",
     "reason": "The light value of the tinted background; the dark block defines its own (the brand's 'light' variant)"

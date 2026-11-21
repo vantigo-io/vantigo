@@ -7,9 +7,9 @@ const (
 	PageLight = "#f7f8fc"
 	CardLight = "#ffffff"
 	TextLight = "#182033"
-	PageDark  = "#15182a"
-	CardDark  = "#1c1f32"
-	TextDark  = "#dde1ef"
+	PageDark  = "#0d0f14"
+	CardDark  = "#191b24"
+	TextDark  = "#dfe2ea"
 )
 
 // Scheme is a colour scheme.
@@ -49,22 +49,41 @@ type Check struct {
 	Pass       bool
 }
 
-// DarkTint is Mantine's `light` variant of a colour in the dark scheme, which
-// Mantine 9 makes the colour's shade 9 darkened by half: each channel halved
-// and rounded half-up. It is opaque, so compositing it over the card changes
-// nothing. The dark scheme's tinted cell (--vantigo-subtle-bg) is this. A
-// colour that is not #rrggbb is ErrInvalidHex.
-func DarkTint(shade9 string) (string, error) {
-	r, g, b, err := parseHex(shade9)
+// How much of shade 5 the dark tint is, in percent, and its hover; the rest is
+// the dark card.
+const (
+	DarkTintPercent      = 24
+	DarkTintHoverPercent = 32
+)
+
+// OverCard is a colour laid over the dark card at percent strength, as an
+// opaque colour: each channel (colour*percent + card*(100-percent) + 50) / 100
+// in whole numbers, so the TypeScript port agrees to the byte. A colour that
+// is not #rrggbb is ErrInvalidHex.
+func OverCard(hex string, percent int) (string, error) {
+	r, g, b, err := parseHex(hex)
 	if err != nil {
 		return "", err
 	}
-	return formatHex((r+1)/2, (g+1)/2, (b+1)/2), nil
+	cr, cg, cb, _ := parseHex(CardDark)
+	mix := func(c, card int) int { return (c*percent + card*(100-percent) + 50) / 100 }
+	return formatHex(mix(r, cr), mix(g, cg), mix(b, cb)), nil
 }
 
-func darkTint(shade9 string) string {
-	r, g, b, _ := parseHex(shade9)
-	return formatHex((r+1)/2, (g+1)/2, (b+1)/2)
+// DarkTint is the `light` variant of the brand colour in the dark scheme (the
+// active navigation link, an app tile, a light badge): shade 5 over the card
+// at DarkTintPercent. It is opaque and always lighter than the card; the dark
+// scheme's tinted cell (--vantigo-subtle-bg) is this. Mantine's own rule,
+// shade 9 darkened by half, gave a tint darker than the card for a dark shade
+// 9, so the shell's theme replaces it with this one (algorithm 3). A colour
+// that is not #rrggbb is ErrInvalidHex.
+func DarkTint(shade5 string) (string, error) {
+	return OverCard(shade5, DarkTintPercent)
+}
+
+func darkTint(shade5 string) string {
+	out, _ := OverCard(shade5, DarkTintPercent)
+	return out
 }
 
 // Checks is the ten checks of B4 for a generated scale, light then dark, each in
@@ -85,7 +104,7 @@ func Checks(res Result) []Check {
 		{Dark, PairFilledHover, res.FilledText, s[7]},
 		{Dark, PairLinkPage, s[3], PageDark},
 		{Dark, PairLinkCard, s[3], CardDark},
-		{Dark, PairLinkTint, s[3], darkTint(s[9])},
+		{Dark, PairLinkTint, s[3], darkTint(s[5])},
 	}
 	out := make([]Check, len(rows))
 	for i, r := range rows {

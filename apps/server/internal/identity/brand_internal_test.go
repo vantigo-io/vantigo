@@ -123,11 +123,8 @@ func TestBrandTokens_AnotherPrimaryIsGenerated(t *testing.T) {
 	if got := tokens.Dark.Derived["--mantine-color-vantigo-outline-hover"]; !strings.HasPrefix(got, "rgba(") || !strings.HasSuffix(got, ", 0.05)") {
 		t.Errorf("outline-hover = %q", got)
 	}
-	if got := rgbaOf("#0f0f0f", 0.5); got != "rgba(8, 8, 8, 1)" {
-		t.Errorf("darken(#0f0f0f, .5) = %q, want Math.round(15 * .5) = 8 per channel", got)
-	}
-	if got := rgbaOf("#0a0a0a", 0.3); got != "rgba(7, 7, 7, 1)" {
-		t.Errorf("darken(#0a0a0a, .3) = %q, want 7 per channel", got)
+	if got := overCard("#6366f1", brandscale.DarkTintPercent); got != "#2b2d55" {
+		t.Errorf("the dark tint of #6366f1 = %q, want shade 5 over the card at 24 percent", got)
 	}
 }
 
