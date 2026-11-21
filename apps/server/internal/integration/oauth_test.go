@@ -640,7 +640,7 @@ func TestOAuth_Discovery(t *testing.T) {
 // Switched off (C24, A24): the discovery documents and the token endpoint
 // are 404, a vta_ token is an unknown key's 401, and the MCP 401 is M6's.
 func TestOAuth_SwitchedOff(t *testing.T) {
-	h := mcpHarness(t)
+	h := mcpHarness(t, modtest.WithEnv("OAUTH_ENABLED", "0"))
 	c := h.Client(t)
 	for _, path := range []string{"/.well-known/oauth-protected-resource/api/mcp", "/.well-known/oauth-authorization-server"} {
 		if r := c.Do(http.MethodGet, path, nil, modtest.SkipContract("discovery")); r.Status != http.StatusNotFound {

@@ -386,7 +386,7 @@ func TestOAuth_PreviewRefusals(t *testing.T) {
 	}
 
 	// Switched off, every operation is 404 and an access token is no caller.
-	offH, offOwner, _ := rbacHarness(t)
+	offH, offOwner, _ := rbacHarness(t, withEnv("OAUTH_ENABLED", "0"))
 	id := createIntegration(t, offOwner, "Agent").Integration.ID
 	for _, c := range []struct{ method, path string }{
 		{http.MethodPost, oauthPreviewPath},
@@ -552,7 +552,7 @@ func TestOAuth_ThePrune(t *testing.T) {
 		t.Errorf("%d documents kept, want the one 6 days past expiry", got)
 	}
 
-	off := newHarness(t, withEnv("IDENTITY_API_KEYS_ENABLED", "0"), withEnv("IDEMPOTENCY_ENABLED", "0"))
+	off := newHarness(t, withEnv("IDENTITY_API_KEYS_ENABLED", "0"), withEnv("IDEMPOTENCY_ENABLED", "0"), withEnv("OAUTH_ENABLED", "0"))
 	if apiKeysWorker(off) != nil {
 		t.Error("the worker runs with all three switches off")
 	}

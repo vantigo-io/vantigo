@@ -1270,7 +1270,9 @@ func TestWebhookSender_IsSwitchedOnAndOffByItsOwnSetting(t *testing.T) {
 		// identity.api-keys also prunes the Idempotency-Keys, under its own
 		// switch (idempotency design I21).
 		{map[string]string{"IDENTITY_API_KEYS_ENABLED": "0"}, "identity.api-keys,identity.webhook-sender"},
-		{map[string]string{"IDENTITY_API_KEYS_ENABLED": "0", "IDEMPOTENCY_ENABLED": "0"}, "identity.webhook-sender"},
+		// And OAuth's prune under OAUTH_ENABLED (OAuth connections design A21).
+		{map[string]string{"IDENTITY_API_KEYS_ENABLED": "0", "IDEMPOTENCY_ENABLED": "0"}, "identity.api-keys,identity.webhook-sender"},
+		{map[string]string{"IDENTITY_API_KEYS_ENABLED": "0", "IDEMPOTENCY_ENABLED": "0", "OAUTH_ENABLED": "0"}, "identity.webhook-sender"},
 		{map[string]string{"IDENTITY_WEBHOOKS_ENABLED": "0"}, "identity.api-keys"},
 	} {
 		var opts []harnessOption
