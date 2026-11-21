@@ -1085,6 +1085,24 @@ notices go out regardless. The table has no foreign key
 to `api_keys`: a key's row is deleted 90 days after it expired, and its log rows age out on
 their own.
 
+### Connected apps
+
+With `OAUTH_ENABLED=1` (off by default until its screens land) an integration can also be
+reached through a **connection**: an MCP client or app an Owner approved by signing in, which
+presents an OAuth access token, `Authorization: Bearer vta_…`, instead of a key
+([OAuth connections](/en/reference/oauth/)). The token is judged as a key is — never with a
+session cookie beside it, through the same roles, marks and rate limit — with the connection's
+state where the key's would be read: its revocation and expiry, and whether it was approved for
+Read only (`403 insufficient_scope`). A connection has no narrowing and no networks.
+
+A connection also depends on the person who approved it. Every request checks that they are a
+person, not disabled, not pending, an **Owner** now, and, while SCIM is on, not deactivated by
+the directory — with no Owner exemption, and with a password lockout ignored, so nobody can end
+an Owner's connections by failing their password. Disabling or deleting that person, or taking
+their Owner role away under **Users**, revokes their connections in the same transaction
+(`authorizer_removed`); a change that reaches them another way, such as a group mapping, leaves
+the connection refused at once and listed as inactive until an Owner revokes it.
+
 ### What is audited for integrations
 
 `integration.created`, `integration.updated`, `integration.roles_changed`,
@@ -1095,7 +1113,9 @@ Owner and whether they used MFA, and `api_key.expired`, written once per key by 
 narrowing, read-only, the networks and the expiry, never a key's hash or secret; the target is
 the integration's user. A key's secret is never logged, never in an error, never in a trace and
 never in the audit trail: it appears only in the answer that creates or rolls it, which is sent
-with `Cache-Control: no-store`.
+with `Cache-Control: no-store`. A connection is audited `connection.authorized` when its client
+exchanges its code and `connection.revoked` with its reason when it ends; no token, code or
+verifier is ever recorded.
 
 ## Rate limits
 
@@ -1114,6 +1134,8 @@ restarts** rather than per process. The limit is applied before the access check
 | `Invitations` | 30 / minute | Owner invitation management |
 | `InvitationAcceptance` | 20 / minute | Invitation validate and accept |
 | `UserManagement` | 30 / minute | Owner user management, adoption for Staff, the employee roles, and making or rolling an API key |
+| `OAuthPreview` | 20 / minute | Previewing an OAuth authorization request, which may fetch a client's metadata document |
+| `OAuthToken` | 120 / minute | The OAuth token endpoint, `POST /api/oauth/token`, per address |
 | `api` | The integration's `rate_limit_per_minute` / minute | Every request an API key is admitted for, keyed by its integration, after the access check ([above](#the-rate-limit-of-a-key-request)) |
 | `OwnerAvatarRead` | 300 / minute | Owner avatar reads |
 | `StationPairing` | 10 / 15 minutes | Pairing a station with a code |

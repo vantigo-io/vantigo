@@ -1125,6 +1125,26 @@ lages ved neste syklus, og varslene sendes uansett. Tabellen har ingen
 fremmednøkkel til `api_keys`: en nøkkels rad slettes 90 dager etter at den utløp, og loggradene
 eldes ut av seg selv.
 
+### Tilkoblede apper
+
+Med `OAUTH_ENABLED=1` (av som standard til skjermbildene er på plass) kan en integrasjon også
+nås gjennom en **tilkobling**: en MCP-klient eller app en eier godkjente ved å logge inn, som
+viser et OAuth-tilgangstoken, `Authorization: Bearer vta_…`, i stedet for en nøkkel
+([OAuth connections](/en/reference/oauth/)). Tokenet vurderes som en nøkkel — aldri med en
+øktinformasjonskapsel ved siden av, gjennom de samme rollene, merkene og hastighetsgrensen —
+med tilkoblingens tilstand der nøkkelens ville blitt lest: om den er tilbakekalt eller utløpt,
+og om den ble godkjent for bare lesing (`403 insufficient_scope`). En tilkobling har ingen
+begrensning og ingen nettverk.
+
+En tilkobling avhenger også av personen som godkjente den. Hver forespørsel kontrollerer at hen
+er en person, ikke deaktivert, ikke ventende, **eier** nå, og, mens SCIM er på, ikke deaktivert
+av katalogen — uten unntak for eiere, og med passordsperre ignorert, så ingen kan avslutte en
+eiers tilkoblinger ved å skrive feil passord. Å deaktivere eller slette den personen, eller å ta
+fra hen eierrollen under **Brukere**, tilbakekaller tilkoblingene i samme transaksjon
+(`authorizer_removed`); en endring som når hen på en annen måte, for eksempel en
+gruppekobling, gjør at tilkoblingen avvises med en gang og vises som inaktiv til en eier
+tilbakekaller den.
+
 ### Hva som revideres for integrasjoner
 
 `integration.created`, `integration.updated`, `integration.roles_changed`,
@@ -1135,7 +1155,9 @@ handlet og om hen brukte MFA, og `api_key.expired`, som arbeideren `identity.api
 lesing, nettverkene og utløpet, aldri en nøkkels hash eller hemmelighet; målet er
 integrasjonens bruker. En nøkkels hemmelighet logges aldri, står aldri i en feil, en sporing
 eller revisjonssporet: den finnes bare i svaret som oppretter eller roterer den, og det sendes
-med `Cache-Control: no-store`.
+med `Cache-Control: no-store`. En tilkobling revideres som `connection.authorized` når klienten
+bytter inn koden sin, og som `connection.revoked` med årsaken når den avsluttes; ingen token,
+kode eller verifikator registreres noen gang.
 
 ## Hastighetsbegrensninger
 
@@ -1155,6 +1177,8 @@ tilgangskontrollen, unntatt `api`, som teller en nøkkel som er sluppet gjennom.
 | `Invitations` | 30 / minutt | Eiers administrasjon av invitasjoner |
 | `InvitationAcceptance` | 20 / minutt | Validering og aksept av invitasjon |
 | `UserManagement` | 30 / minutt | Eiers brukeradministrasjon, å ta inn brukere under Ansatte, ansattrollene og å lage eller rotere en API-nøkkel |
+| `OAuthPreview` | 20 / minutt | Forhåndsvisning av en OAuth-autorisasjonsforespørsel, som kan hente en klients metadatadokument |
+| `OAuthToken` | 120 / minutt | OAuth-token-endepunktet, `POST /api/oauth/token`, per adresse |
 | `api` | Integrasjonens `rate_limit_per_minute` / minutt | Hver forespørsel en API-nøkkel slippes gjennom for, med integrasjonen som nøkkel, etter tilgangskontrollen ([over](#hastighetsgrensen-for-en-nøkkelforespørsel)) |
 | `OwnerAvatarRead` | 300 / minutt | Lesing av eieres avatarer |
 | `StationPairing` | 10 / 15 minutter | Tilkobling av en nettbrettstasjon med en kode |
