@@ -309,7 +309,7 @@ func (w *followupWorker) Name() string            { return followupWorkerName }
 func (w *followupWorker) Interval() time.Duration { return followupWorkerInterval }
 
 func (w *followupWorker) Run(ctx context.Context) error {
-	return runEvery(ctx, followupWorkerInterval, w.cycle)
+	return runEvery(ctx, w.Name(), followupWorkerInterval, w.cycle)
 }
 
 // cycle finishes up to followupPerCycle due invoices and answers how many it

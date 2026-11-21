@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"math/rand/v2"
 	"net"
@@ -121,7 +122,7 @@ func (s *server) subscriptionClient() *http.Client {
 		rt = s.deps.HTTPTransport
 	}
 	return &http.Client{
-		Transport: rt,
+		Transport: telemetry.OutboundTransport(rt),
 		Timeout:   subscriptionFetchBudget,
 		// Redirects are never followed: the next address is one the guard
 		// and the person never saw, and Go would follow up to ten. A 3xx is

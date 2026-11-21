@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"log/slog"
 	"net/http"
@@ -63,7 +64,7 @@ func newAnthropic(s anthropicSettings, transport http.RoundTripper) *anthropicPr
 		base = defaultAnthropicBaseURL
 	}
 	httpClient := &http.Client{
-		Transport: boundedTransport{next: transport},
+		Transport: telemetry.OutboundTransport(boundedTransport{next: transport}),
 		// A redirect would re-send the request, API key included, to a host
 		// no operator named.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },

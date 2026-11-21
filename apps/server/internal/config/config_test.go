@@ -464,6 +464,24 @@ func TestLoad_EnvAndLogLevel(t *testing.T) {
 	}
 }
 
+func TestLoad_TenantID(t *testing.T) {
+	if got := mustLoad(t, validEnv()).TenantID; got != "" {
+		t.Errorf("TenantID unset = %q, want empty", got)
+	}
+	for _, ok := range []string{"acme", "a", "acme-norge-2", strings.Repeat("a", 63), "kube", "defaults"} {
+		if got := mustLoad(t, with(validEnv(), "VANTIGO_TENANT_ID", ok)).TenantID; got != ok {
+			t.Errorf("TenantID %q = %q", ok, got)
+		}
+	}
+	for _, bad := range []string{"Acme", "-acme", "acme-", "ac_me", "acme.no", strings.Repeat("a", 64),
+		"default", "kube-system", "kube-public", "vantigo-system", "æøå"} {
+		msg := loadError(t, with(validEnv(), "VANTIGO_TENANT_ID", bad))
+		if !strings.Contains(msg, "VANTIGO_TENANT_ID: must be 1–63 characters") {
+			t.Errorf("VANTIGO_TENANT_ID=%q: error is missing the rule:\n%s", bad, msg)
+		}
+	}
+}
+
 func TestLoad_IdentityDefaults(t *testing.T) {
 	cfg := mustLoad(t, validEnv())
 

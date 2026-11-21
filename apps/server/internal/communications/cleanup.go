@@ -128,8 +128,11 @@ func (w *CleanupWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(cleanupPollInterval)
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunBatch(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("communications object cleanup failed", "worker", cleanupWorkerName, "error", err)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunBatch(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "communications object cleanup failed", "worker", cleanupWorkerName, "error", err)
 		}
 		select {
 		case <-ctx.Done():

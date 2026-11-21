@@ -133,7 +133,9 @@ func (w *MessengerSyncWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(messengerSyncPollInterval)
 	defer ticker.Stop()
 	for {
-		w.drain(ctx)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		w.drain(cycleCtx)
+		endCycle(nil)
 		select {
 		case <-ctx.Done():
 			return nil

@@ -11,6 +11,7 @@ package orders
 import (
 	"context"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -33,8 +34,11 @@ func (w *quoteExpiryWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(quoteExpiryInterval)
 	defer ticker.Stop()
 	for {
-		if _, err := w.cycle(ctx); err != nil && ctx.Err() == nil {
-			w.s.deps.Logger.ErrorContext(ctx, "orders: the quote expiry failed", "worker", quoteExpiryWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.cycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.s.deps.Logger.ErrorContext(cycleCtx, "orders: the quote expiry failed", "worker", quoteExpiryWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

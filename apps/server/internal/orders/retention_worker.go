@@ -21,6 +21,7 @@ package orders
 import (
 	"context"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -60,8 +61,11 @@ func (w *retentionWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(retentionInterval)
 	defer ticker.Stop()
 	for {
-		if _, _, err := w.cycle(ctx); err != nil && ctx.Err() == nil {
-			w.s.deps.Logger.ErrorContext(ctx, "orders: the retention cycle failed", "worker", retentionWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, _, err := w.cycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.s.deps.Logger.ErrorContext(cycleCtx, "orders: the retention cycle failed", "worker", retentionWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

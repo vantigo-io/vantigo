@@ -14,6 +14,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 )
 
 // DefaultMaxBodyBytes is the request-body cap of every operation whose
@@ -74,6 +75,9 @@ type Router struct {
 type route struct {
 	segments []routeSegment
 	handler  http.HandlerFunc
+	// path is the contract's path, "/api/v1/x/{id}": the route the request's
+	// span and metrics are named after (telemetry.SetRoute).
+	path string
 }
 
 // routeSegment is one segment of a registered pattern: either a literal that
@@ -308,6 +312,7 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 	}
 
 	r.routes[method] = append(r.routes[method], &route{
+		path:     path,
 		segments: segments,
 		handler:  r.wrap(op, rule, r.bodyLimit(op.OperationID), newIdempotentRoute(r.idempotency, r.idempotencyOff, r.known, r.never, method, op, rule, segments), h),
 	})
@@ -470,6 +475,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			req.SetPathValue(seg.name, segments[i])
 		}
 	}
+	telemetry.SetRoute(req.Context(), req.Method, rt.path)
 	rt.handler(w, req)
 }
 

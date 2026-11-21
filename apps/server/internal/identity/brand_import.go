@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"io/fs"
 	"net"
@@ -422,7 +423,7 @@ func (r *brandImportRunner) client() *http.Client {
 		n = *r.a.brandNet
 	}
 	return &http.Client{
-		Transport:     webhookGuardedTransport(n),
+		Transport:     telemetry.OutboundTransport(webhookGuardedTransport(n)),
 		Timeout:       brandLogoFetchTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}

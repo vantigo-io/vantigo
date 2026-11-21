@@ -143,6 +143,11 @@ type Config struct {
 	ShutdownTimeout  time.Duration
 	LogLevel         slog.Level
 	Branding         Branding
+	// TenantID is VANTIGO_TENANT_ID (Kubernetes readiness KR17): the slug
+	// the operator gives this installation, equal to its namespace. It
+	// becomes the vantigo.tenant.id resource attribute on every exported
+	// signal and the tenant field on every stdout log line. Empty when unset.
+	TenantID string
 
 	// AppSecret is the process-wide key material (CSRF tokens, cookie
 	// signing, encryption of TOTP secrets). At least 32 bytes.
@@ -770,6 +775,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.TrustedProxyHops = integer(&p, env, "TRUSTED_PROXY_HOPS", 0, 0, 10)
 	c.ShutdownTimeout = duration(&p, env, "SHUTDOWN_TIMEOUT", 30*time.Second)
 	c.LogLevel = logLevel(&p, env)
+	c.TenantID = tenantID(&p, env)
 	c.Branding = branding(&p, env)
 
 	c.AppSecret = appSecret(&p, env)
@@ -1844,6 +1850,36 @@ func boolean(p *problems, env map[string]string, field string, def bool) bool {
 // flag is boolean with the fail-safe default: off.
 func flag(p *problems, env map[string]string, field string) bool {
 	return boolean(p, env, field, false)
+}
+
+// tenantID validates VANTIGO_TENANT_ID (KR17): 1–63 characters of
+// [a-z0-9-], not starting or ending with "-", so it doubles as a Kubernetes
+// namespace name — and none of the names Kubernetes or the operator use
+// themselves: "default", anything starting "kube-", and "vantigo-system".
+func tenantID(p *problems, env map[string]string) string {
+	v := env["VANTIGO_TENANT_ID"]
+	if v == "" {
+		return ""
+	}
+	if !ValidTenantID(v) {
+		p.add("VANTIGO_TENANT_ID", `must be 1–63 characters of a–z, 0–9 and "-", not starting or ending with "-", and not "default", "vantigo-system" or a name starting "kube-"`)
+		return ""
+	}
+	return v
+}
+
+// ValidTenantID reports whether id is a tenant ID VANTIGO_TENANT_ID accepts.
+func ValidTenantID(id string) bool {
+	if len(id) == 0 || len(id) > 63 || id[0] == '-' || id[len(id)-1] == '-' {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return id != "default" && id != "vantigo-system" && !strings.HasPrefix(id, "kube-")
 }
 
 func logLevel(p *problems, env map[string]string) slog.Level {

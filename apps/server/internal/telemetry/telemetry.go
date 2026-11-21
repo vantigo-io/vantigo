@@ -29,7 +29,14 @@ type Options struct {
 	Environment string
 	// Command is the vantigo command being run: "api", "server" or "worker".
 	Command string
+	// TenantID is VANTIGO_TENANT_ID, already validated by config: the
+	// resource attribute vantigo.tenant.id (Kubernetes readiness KR17).
+	// Empty leaves the attribute out.
+	TenantID string
 }
+
+// TenantAttribute is the resource attribute that names the tenant.
+const TenantAttribute = "vantigo.tenant.id"
 
 // Signals reports which signals are being exported.
 type Signals struct {
@@ -75,6 +82,9 @@ func Setup(ctx context.Context, o Options) (Signals, func(context.Context) error
 		if err != nil {
 			return fail(fmt.Errorf("telemetry: trace exporter: %w", err))
 		}
+		// No sampler option: the SDK reads OTEL_TRACES_SAMPLER and
+		// OTEL_TRACES_SAMPLER_ARG itself (KR25). What an incoming traceparent
+		// may decide is HTTPHandler's concern: nothing.
 		tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp), sdktrace.WithResource(res))
 		shutdowns = append(shutdowns, tp.Shutdown)
 		otel.SetTracerProvider(tp)
@@ -111,12 +121,16 @@ func Setup(ctx context.Context, o Options) (Signals, func(context.Context) error
 // operator's OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES are merged last,
 // so they override our defaults rather than the other way round.
 func buildResource(ctx context.Context, o Options) (*resource.Resource, error) {
-	ours, err := resource.Merge(resource.Default(), resource.NewSchemaless(
+	attrs := []attribute.KeyValue{
 		attribute.String("service.name", "vantigo"),
 		attribute.String("service.version", o.Version),
 		attribute.String("deployment.environment.name", o.Environment),
 		attribute.String("vantigo.command", o.Command),
-	))
+	}
+	if o.TenantID != "" {
+		attrs = append(attrs, attribute.String(TenantAttribute, o.TenantID))
+	}
+	ours, err := resource.Merge(resource.Default(), resource.NewSchemaless(attrs...))
 	if err != nil {
 		return nil, fmt.Errorf("telemetry: resource: %w", err)
 	}

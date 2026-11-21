@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"net/http"
 	"net/url"
@@ -163,7 +164,7 @@ func New(o Options) (*Client, error) {
 		base: base, uid: o.UID, key: o.Key, clientURL: clientURL, customers: slices.Clone(o.CustomerNumbers),
 		test: o.Test, now: now, timeout: timeout,
 	}
-	c.http = &http.Client{Transport: transport, CheckRedirect: c.checkRedirect}
+	c.http = &http.Client{Transport: telemetry.OutboundTransport(transport), CheckRedirect: c.checkRedirect}
 	return c, nil
 }
 

@@ -43,13 +43,19 @@ func (r *Runner) Start(ctx context.Context, workers []Worker) {
 // log its stop, and mark it done in wg.
 func (r *Runner) run(ctx context.Context, w Worker) {
 	defer r.wg.Done()
+	ctx, s := withSlot(ctx)
 	defer func() {
 		if rec := recover(); rec != nil {
 			// debug.Stack() here, not the recover site's caller (this defer's
 			// own frame): it captures the goroutine's stack as of the panic,
 			// including w.Run's frames, which is what makes a recovered panic
 			// actionable instead of just a one-line "something panicked".
-			r.logger.Error("worker panicked", "worker", w.Name(), "panic", rec, "stack", string(debug.Stack()))
+			stack := string(debug.Stack())
+			// The cycle the panic unwound through, if the worker opened one
+			// (StartCycle), ends as a panic with the stack as an exception
+			// event (Kubernetes readiness KR21).
+			s.panicked(rec, stack)
+			r.logger.Error("worker panicked", "worker", w.Name(), "panic", rec, "stack", stack)
 		}
 	}()
 

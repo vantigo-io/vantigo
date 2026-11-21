@@ -78,8 +78,11 @@ func (w *SweepWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.keys.c.logger.Error("google: the sweep failed", "worker", sweepName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.keys.c.logger.ErrorContext(cycleCtx, "google: the sweep failed", "worker", sweepName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

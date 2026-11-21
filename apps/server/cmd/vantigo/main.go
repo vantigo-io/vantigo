@@ -168,7 +168,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	logger := telemetry.NewLogger(stdout, cfg.LogLevel, false)
+	logger := telemetry.NewLogger(stdout, cfg.LogLevel, false, cfg.TenantID)
 	slog.SetDefault(logger)
 	logRenamedVariables(logger, cfg)
 
@@ -205,7 +205,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// raw is "api", "server" or "worker" here: every other command has returned.
-	signals, shutdownTelemetry, err := telemetry.Setup(ctx, telemetry.Options{Version: buildinfo.Version, Environment: string(cfg.Env), Command: raw})
+	signals, shutdownTelemetry, err := telemetry.Setup(ctx, telemetry.Options{Version: buildinfo.Version, Environment: string(cfg.Env), Command: raw, TenantID: cfg.TenantID})
 	if err != nil {
 		logger.Error("telemetry setup failed", "error", err)
 		return 1
@@ -218,7 +218,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}()
 	if signals.Logs {
-		logger = telemetry.NewLogger(stdout, cfg.LogLevel, true)
+		logger = telemetry.NewLogger(stdout, cfg.LogLevel, true, cfg.TenantID)
 		slog.SetDefault(logger)
 	}
 	logger.Info("telemetry", "traces", signals.Traces, "metrics", signals.Metrics, "logs", signals.Logs)
@@ -447,6 +447,12 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	// ordering this by defer, rather than by hand in every branch that
 	// returns, keeps the ordering true regardless of how serve returns.
 	defer func() { closePool(pool, cfg.ShutdownTimeout, logger) }()
+	// The pool's gauges (Kubernetes readiness KR23); a failure costs only them.
+	if stopPoolMetrics, err := telemetry.ObservePool(pool); err != nil {
+		logger.Warn("the database pool metrics are not reported", "error", err)
+	} else {
+		defer stopPoolMetrics()
+	}
 
 	healthHandler := health.Handler(logger, buildinfo.Version, health.Check{Name: "postgres", Run: pool.Ping})
 	handler := healthHandler

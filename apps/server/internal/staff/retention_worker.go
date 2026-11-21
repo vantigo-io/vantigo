@@ -2,6 +2,7 @@ package staff
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -111,11 +112,16 @@ func (w *RetentionWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+		// One cycle span over both passes (Kubernetes readiness KR21).
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		if err != nil && ctx.Err() == nil {
 			w.srv.logger().Error("staff: the retention erase cycle failed", "worker", retentionWorkerName, "error", err.Error())
 		}
-		if _, _, err := w.RunLedger(ctx); err != nil && ctx.Err() == nil {
-			w.srv.logger().Error("staff: the deletion ledger pass failed", "worker", retentionWorkerName, "error", err.Error())
+		_, _, ledgerErr := w.RunLedger(cycleCtx)
+		endCycle(errors.Join(err, ledgerErr))
+		if ledgerErr != nil && ctx.Err() == nil {
+			w.srv.logger().ErrorContext(cycleCtx, "staff: the deletion ledger pass failed", "worker", retentionWorkerName, "error", ledgerErr.Error())
 		}
 		select {
 		case <-ctx.Done():

@@ -7,11 +7,13 @@ import (
 )
 
 // The port and its adapter are platform (I29, module boundaries rules 1, 2
-// and 4): the standard library and the port's own packages, nothing else —
+// and 4): the standard library, internal/telemetry (the traced outbound
+// transport, KR20) and the port's own packages, nothing else —
 // no module, no store, no driver.
 func TestConsumerinvoice_Purity(t *testing.T) {
 	t.Parallel()
 	const own = "github.com/vantigo-io/vantigo/server/internal/consumerinvoice"
+	const telemetry = "github.com/vantigo-io/vantigo/server/internal/telemetry"
 	for _, dir := range []string{".", "mps", "mps/mpstest"} {
 		p, err := build.ImportDir(dir, 0)
 		if err != nil {
@@ -22,10 +24,10 @@ func TestConsumerinvoice_Purity(t *testing.T) {
 		}
 		for _, imp := range p.Imports {
 			std := !strings.Contains(strings.SplitN(imp, "/", 2)[0], ".")
-			if std || imp == own || strings.HasPrefix(imp, own+"/") {
+			if std || imp == telemetry || imp == own || strings.HasPrefix(imp, own+"/") {
 				continue
 			}
-			t.Errorf("%s imports %s: only the standard library and internal/consumerinvoice are allowed", dir, imp)
+			t.Errorf("%s imports %s: only the standard library, internal/telemetry and internal/consumerinvoice are allowed", dir, imp)
 		}
 	}
 }

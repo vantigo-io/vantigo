@@ -73,8 +73,11 @@ func (w *CompetenceWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.srv.logger().Error("staff: the competence cycle failed", "worker", competenceWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.srv.logger().ErrorContext(cycleCtx, "staff: the competence cycle failed", "worker", competenceWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

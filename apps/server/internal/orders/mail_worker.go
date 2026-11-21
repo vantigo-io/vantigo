@@ -90,7 +90,9 @@ func (w *mailWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(mailWorkerInterval)
 	defer ticker.Stop()
 	for {
-		w.cycle(ctx)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		worker.Claimed(cycleCtx, w.cycle(cycleCtx))
+		endCycle(nil)
 		select {
 		case <-ctx.Done():
 			return nil

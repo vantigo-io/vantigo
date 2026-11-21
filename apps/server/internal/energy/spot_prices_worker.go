@@ -167,8 +167,11 @@ func (w *SpotPriceWorker) Interval() time.Duration {
 // for a price.
 func (w *SpotPriceWorker) Run(ctx context.Context) error {
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("spot price cycle failed", "worker", spotPriceWorkerName, "error", err)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "spot price cycle failed", "worker", spotPriceWorkerName, "error", err)
 		}
 		timer := time.NewTimer(w.nextWait())
 		select {

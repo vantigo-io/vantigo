@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"net"
 	"net/http"
@@ -351,7 +352,7 @@ func (a *Access) oauthFetcherFor() *oauthFetcher {
 		transport.ResponseHeaderTimeout = oauthDocumentBudget
 		a.oauthFetch = &oauthFetcher{
 			client: &http.Client{
-				Transport: transport,
+				Transport: telemetry.OutboundTransport(transport),
 				Timeout:   oauthDocumentBudget,
 				// No redirect is followed (C6): a 3xx is a refused client.
 				CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },

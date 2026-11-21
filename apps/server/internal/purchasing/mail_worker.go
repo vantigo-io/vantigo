@@ -70,11 +70,13 @@ func workers(d module.Deps) []worker.Worker {
 }
 
 // runEvery runs cycle every interval until ctx is done.
-func runEvery(ctx context.Context, interval time.Duration, cycle func(context.Context) int) error {
+func runEvery(ctx context.Context, name string, interval time.Duration, cycle func(context.Context) int) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		cycle(ctx)
+		cycleCtx, endCycle := worker.StartCycle(ctx, name)
+		worker.Claimed(cycleCtx, cycle(cycleCtx))
+		endCycle(nil)
 		select {
 		case <-ctx.Done():
 			return nil
@@ -90,7 +92,7 @@ func (w *mailWorker) Name() string            { return mailWorkerName }
 func (w *mailWorker) Interval() time.Duration { return mailWorkerInterval }
 
 func (w *mailWorker) Run(ctx context.Context) error {
-	return runEvery(ctx, mailWorkerInterval, w.cycle)
+	return runEvery(ctx, w.Name(), mailWorkerInterval, w.cycle)
 }
 
 // cycle sends up to mailPerCycle due rows, one at a time, and answers how
@@ -228,7 +230,7 @@ func (w *deletionsWorker) Name() string            { return deletionsWorkerName 
 func (w *deletionsWorker) Interval() time.Duration { return deletionsWorkerInterval }
 
 func (w *deletionsWorker) Run(ctx context.Context) error {
-	return runEvery(ctx, deletionsWorkerInterval, w.cycle)
+	return runEvery(ctx, w.Name(), deletionsWorkerInterval, w.cycle)
 }
 
 // cycle deletes up to deletionsPerCycle objects of the ledger, oldest first,

@@ -291,8 +291,11 @@ func (w *MailboxSyncWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.deps.Logger.Error("calendar: the mailbox sync cycle failed", "worker", mailboxWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.deps.Logger.ErrorContext(cycleCtx, "calendar: the mailbox sync cycle failed", "worker", mailboxWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

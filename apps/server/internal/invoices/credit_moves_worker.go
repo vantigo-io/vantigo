@@ -61,8 +61,11 @@ func (w *CreditMovesWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(creditMovesInterval)
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("invoices: a credit moves cycle failed", "worker", creditMovesWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "invoices: a credit moves cycle failed", "worker", creditMovesWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

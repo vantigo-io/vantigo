@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"log/slog"
 	"net"
@@ -267,7 +268,7 @@ func guardedTransport(resolver netguard.Resolver, dial func(ctx context.Context,
 // 3xx is handed back and refused as the answer it is.
 func graphHTTPClient(rt http.RoundTripper) *http.Client {
 	return &http.Client{
-		Transport:     rt,
+		Transport:     telemetry.OutboundTransport(rt),
 		Timeout:       graphCallBudget,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
@@ -417,7 +418,7 @@ func (c *graphClient) getRaw(ctx context.Context, cred graphCredential, path str
 // rawHTTP is the http.Client of a raw read: the client's own, its
 // transport and its redirect rule, under graphRawBudget.
 func (c *graphClient) rawHTTP() *http.Client {
-	return &http.Client{Transport: c.http.Transport, Timeout: graphRawBudget, CheckRedirect: c.http.CheckRedirect}
+	return &http.Client{Transport: telemetry.OutboundTransport(c.http.Transport), Timeout: graphRawBudget, CheckRedirect: c.http.CheckRedirect}
 }
 
 // del deletes path; Graph answers 204.

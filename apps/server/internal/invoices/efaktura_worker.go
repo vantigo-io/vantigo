@@ -121,8 +121,11 @@ func (w *EfakturaWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(efakturaWorkerInterval)
 	defer ticker.Stop()
 	for {
-		if err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("invoices: an eFaktura worker cycle failed", "worker", efakturaWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "invoices: an eFaktura worker cycle failed", "worker", efakturaWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

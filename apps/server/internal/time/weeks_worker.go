@@ -48,7 +48,10 @@ func (w *WeeksWorker) Run(ctx context.Context) error {
 	t := time.NewTicker(weeksInterval)
 	defer t.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
 			logger := w.deps.Logger
 			if logger == nil {
 				logger = slog.Default()
