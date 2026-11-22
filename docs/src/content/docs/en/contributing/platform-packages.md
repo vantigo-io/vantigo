@@ -1041,7 +1041,6 @@ The hub's two dedicated connections are dialled with `db.UTCSession`, like the p
 migrator's, so their sessions run in UTC whatever the connection string asks
 ([UTC database sessions](/en/admin/kubernetes/#utc-database-sessions)).
 
-
 ## Telemetry
 
 `internal/telemetry` wires OpenTelemetry (the operator's side is
