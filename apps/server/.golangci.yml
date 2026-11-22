@@ -2380,6 +2380,12 @@ linters:
         source: '^\s*clock = time\.Now$'
         linters:
           - forbidigo
+      # A worker cycle's duration (vantigo.worker.cycle.duration) is measured
+      # in process and never written to a row, so it reads the local clock.
+      - path: '(^|/)internal/worker/cycle\.go$'
+        source: 'start: time\.Now\(\)\}$'
+        linters:
+          - forbidigo
 
 formatters:
   enable:
