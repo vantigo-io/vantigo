@@ -1,6 +1,6 @@
 ---
 title: Kubernetes
-description: "Running Vantigo on Kubernetes: the probes on the management port and a startup probe, the drain on SIGTERM and the grace period it needs, how many server and worker replicas, the database-anchored clock, UTC database sessions, and rolling upgrades with server, never api."
+description: "Running Vantigo on Kubernetes: the probes on the management port and a startup probe, the drain on SIGTERM and the grace period it needs, how many server and worker replicas, the database-anchored clock, UTC database sessions, the tenant in telemetry, and rolling upgrades with server, never api."
 sidebar:
   order: 12
 sources:
@@ -141,6 +141,25 @@ day boundary a query draws depends on the session's zone, and a managed PostgreS
 default to another one. A workspace's own time zone, set under Workspace admin, is applied
 by the application where a rule or a screen names it, never by the session. There is
 nothing to configure.
+
+## Telemetry
+
+- Set `VANTIGO_TENANT_ID` to the namespace's name. The app refuses at start what it refuses
+  as a namespace too: more than 63 characters, anything but `a`–`z`, `0`–`9` and `-`, a `-`
+  at either end, `default`, `vantigo-system` and any name starting `kube-`
+  ([Configuration](/en/admin/configuration/)).
+- Every JSON line on stdout carries `tenant`, and `trace_id` and `span_id` when it was
+  logged inside a trace, so a cluster's log agent tells tenants apart and finds a line's
+  trace without OTLP.
+- Traces, metrics and logs sent over OTLP carry the tenant as the `vantigo.tenant.id`
+  resource attribute. The collector's `transform` that copies it onto every data point, so
+  Prometheus or Mimir can label by tenant, and the `tail_sampling` that keeps every error
+  trace, are in [Telemetry](/en/admin/installation/#telemetry). With more than one collector
+  replica, tail sampling needs the `loadbalancing` exporter, keyed on the trace ID, in
+  front of them.
+- Every `worker` replica reports the same `vantigo.events.backlog` and
+  `vantigo.events.backlog.age`, read from the database. A dashboard takes their maximum
+  across replicas, never their sum.
 
 ## Rolling upgrades
 

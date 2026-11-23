@@ -1,6 +1,6 @@
 ---
 title: Kubernetes
-description: "Å kjøre Vantigo på Kubernetes: probene på management-porten og en oppstartsprobe, tømmingen ved SIGTERM og avslutningsfristen den trenger, hvor mange replikaer av server og worker, klokken som følger databasen, databaseøkter i UTC, og rullerende oppgraderinger med server, aldri api."
+description: "Å kjøre Vantigo på Kubernetes: probene på management-porten og en oppstartsprobe, tømmingen ved SIGTERM og avslutningsfristen den trenger, hvor mange replikaer av server og worker, klokken som følger databasen, databaseøkter i UTC, leietakeren i telemetrien, og rullerende oppgraderinger med server, aldri api."
 sidebar:
   order: 12
 sources:
@@ -149,6 +149,25 @@ erstatter en `TimeZone` som tilkoblingsstrengen eventuelt setter. Lagrede tidspu
 en administrert PostgreSQL kan ha en annen sone som standard. Arbeidsområdets egen
 tidssone, satt under Administrer arbeidsområde, brukes av applikasjonen der en regel
 eller et skjermbilde nevner den, aldri av økten. Det er ingenting å konfigurere.
+
+## Telemetri
+
+- Sett `VANTIGO_TENANT_ID` til navnet på navnerommet. Appen avviser ved oppstart det den også
+  avviser som navnerom: mer enn 63 tegn, andre tegn enn `a`–`z`, `0`–`9` og `-`, en `-` i
+  hver ende, `default`, `vantigo-system` og et navn som begynner med `kube-`
+  ([Konfigurasjon](/nb/admin/configuration/)).
+- Hver JSON-linje på stdout har `tenant`, og `trace_id` og `span_id` når den ble logget
+  inne i et spor, så loggagenten i klyngen skiller leietakerne og finner sporet til en linje
+  uten OTLP.
+- Spor, måledata og logger som sendes over OTLP, har leietakeren som ressursattributtet
+  `vantigo.tenant.id`. Collectorens `transform` som kopierer den over på hvert datapunkt,
+  slik at Prometheus eller Mimir kan merke etter leietaker, og `tail_sampling` som beholder
+  hvert spor med feil, står under [Telemetri](/nb/admin/installation/#telemetri). Med mer enn
+  én replika av collectoren trenger halesampling `loadbalancing`-eksportøren, nøklet på
+  spor-ID-en, foran dem.
+- Hver `worker`-replika rapporterer samme `vantigo.events.backlog` og
+  `vantigo.events.backlog.age`, lest fra databasen. Et dashbord tar maksimum over
+  replikaene, aldri summen.
 
 ## Rullerende oppgraderinger
 
