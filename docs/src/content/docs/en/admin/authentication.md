@@ -1083,7 +1083,10 @@ partitions, moves rows that landed in DEFAULT into a partition of their day, and
 older than the 30 days kept, today included ([Configuration](/en/admin/configuration/#workers)).
 Each day is made in a transaction of its own that waits at most 5 seconds (`lock_timeout`) for
 the table's lock; a day that cannot get it is logged and made on the next cycle, and the
-notices go out regardless. The table has no foreign key
+notices go out regardless. Making and dropping a day's partition is DDL, which the runtime role
+the server connects as may not run: the worker calls two functions that run as the schema's
+owner, and the runtime role needs `EXECUTE` on them ([Database
+roles](/en/admin/installation/#database-roles)). The table has no foreign key
 to `api_keys`: a key's row is deleted 90 days after it expired, and its log rows age out on
 their own.
 
