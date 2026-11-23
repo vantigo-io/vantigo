@@ -1057,6 +1057,9 @@ func New(t *testing.T, opts ...Option) *Harness {
 			t.Fatalf("modtest: open a pool of %d: %v", size, err)
 		}
 		t.Cleanup(sized.Close)
+		if fixtures == pool {
+			fixtures = sized
+		}
 		pool = sized
 	}
 

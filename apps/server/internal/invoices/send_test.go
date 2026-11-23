@@ -830,7 +830,7 @@ func TestSend_ARowThatFailsIsLoggedWithoutTheAddress(t *testing.T) {
 		if id != inv.ID {
 			return
 		}
-		if _, err := h.Pool().Exec(ctx, `ALTER TABLE invoices.deliveries ADD CONSTRAINT ck_refuse_every_row CHECK (false) NOT VALID`); err != nil {
+		if _, err := h.OwnerPool().Exec(ctx, `ALTER TABLE invoices.deliveries ADD CONSTRAINT ck_refuse_every_row CHECK (false) NOT VALID`); err != nil {
 			t.Errorf("make the row fail: %v", err)
 		}
 	})
