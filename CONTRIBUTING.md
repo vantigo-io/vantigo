@@ -458,8 +458,9 @@ CPUs matches CI and keeps the run's PostgreSQL footprint predictable.
 **CI runs the server as the runtime role.** It sets `TEST_DATABASE_ROLE=runtime`, so
 every `testdb.Migrated` pool and every `modtest` installation connects as
 `vantigo_test_runtime`, made the way the installation guide makes `vantigo_app`: DML
-only, owning nothing, allowed to create nothing. A harness's fixtures (`Exec`, `One`,
-`Pool`) stay the owner's, so a test may inject a fault with a trigger of its own. A
+only, owning nothing, allowed to create nothing. A harness's fixtures (`Exec`, `Count`,
+`One`, `OwnerPool`) stay the owner's, so a test may inject a fault with a trigger of its
+own; `Pool` is the installation's, the runtime role's. A
 query, a function or a worker that needs DDL at runtime fails there; run the same way
 locally with:
 

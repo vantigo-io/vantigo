@@ -104,8 +104,8 @@ const indexHTML = `<!doctype html><html><head><title>Vantigo</title>` +
 // tests using one can run in parallel.
 type Harness struct {
 	pool *pgxpool.Pool
-	// fixtures is the pool Exec, One and Pool answer with: pool itself, or
-	// the owner's beside the runtime role's (WithRuntimeRole).
+	// fixtures is the pool Exec, One and OwnerPool answer with: pool itself,
+	// or the owner's beside the runtime role's (WithRuntimeRole).
 	fixtures *pgxpool.Pool
 	deps     module.Deps
 	recorder *contracttest.Recorder
@@ -1023,7 +1023,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		t.Fatal("modtest: no module under test; pass modtest.WithModule(m)")
 	}
 	// The installation connects as the runtime role when asked to; the
-	// fixtures (Exec, One, Pool) stay the owner's, since a fixture may inject
+	// fixtures (Exec, One, OwnerPool) stay the owner's, since a fixture may inject
 	// a fault with DDL of its own and is never what a test is about.
 	var pool, fixtures *pgxpool.Pool
 	var databaseURL string
@@ -1313,10 +1313,16 @@ func (h *Harness) DepsOn(pool *pgxpool.Pool) module.Deps {
 	return d
 }
 
-// Pool is the harness's own pool on the installation's database, for a fixture
-// that Exec, Count and One cannot express.
-// Under WithRuntimeRole it is the owner's.
-func (h *Harness) Pool() *pgxpool.Pool { return h.fixtures }
+// Pool is the installation's own pool, for a fixture that Exec, Count and One
+// cannot express and for a test that calls a module's code on the pool the
+// installation runs on. Under WithRuntimeRole it is the runtime role's, as the
+// installation's is; OwnerPool is the owner's.
+func (h *Harness) Pool() *pgxpool.Pool { return h.pool }
+
+// OwnerPool is the pool Exec, Count and One run on: Pool itself, or the
+// owner's beside the runtime role's (WithRuntimeRole), for a fixture that
+// alters the schema — a trigger a test injects a fault with, say.
+func (h *Harness) OwnerPool() *pgxpool.Pool { return h.fixtures }
 
 // fixtureTimeout bounds every fixture query. Without it a pool with no free
 // connection blocks in Acquire for as long as the test binary runs, which
