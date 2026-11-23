@@ -577,7 +577,7 @@ type receivablesFixture struct {
 
 func newReceivablesFixture(t *testing.T) *receivablesFixture {
 	t.Helper()
-	pool, _ := testdb.Migrated(t)
+	pool, _ := testdb.MigratedAsOwner(t) // some of its tests switch a trigger off
 	return &receivablesFixture{t: t, ctx: context.Background(), pool: pool, next: 1}
 }
 

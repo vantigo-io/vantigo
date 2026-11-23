@@ -202,6 +202,14 @@ func createTemplate(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// The runtime role is made and granted its default privileges before the
+	// migrations run, as deploy/compose's init script does on a fresh
+	// installation (runtime.go). The privileges are catalog rows of the
+	// template, so every copy carries them.
+	if err := prepareRuntimeRole(ctx, admin, templateURL); err != nil {
+		_, _ = admin.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
+		return "", err
+	}
 	// The one full migration run per test binary. A broken migration still
 	// fails every test of every package that uses a migrated database.
 	if err := db.ApplyMigrations(ctx, templateURL); err != nil {
@@ -371,9 +379,22 @@ func MigratedURL(t testing.TB) string {
 // section. The migration advisory lock cannot serialise this: advisory locks
 // are per-database and every template is its own database, which is why
 // production, migrating one database, never sees it.
+//
+// With TEST_DATABASE_ROLE=runtime in the environment the pool and the
+// connection string are the runtime role's, as MigratedAsRuntime gives them,
+// so a package's whole suite runs the way the installation guide deploys the
+// server: CI runs the packages that keep partitions this way (runtime.go).
 func Migrated(t testing.TB) (*pgxpool.Pool, string) {
 	t.Helper()
-	databaseURL := create(t, templateName(t))
+	if RuntimeRequested() {
+		return MigratedAsRuntime(t)
+	}
+	return open(t, create(t, templateName(t)))
+}
+
+// open returns a pool of PoolMaxConns on databaseURL, closed when t ends.
+func open(t testing.TB, databaseURL string) (*pgxpool.Pool, string) {
+	t.Helper()
 	pool, err := db.Open(context.Background(), databaseURL, db.WithMaxConns(PoolMaxConns))
 	if err != nil {
 		t.Fatalf("testdb: open pool: %v", err)

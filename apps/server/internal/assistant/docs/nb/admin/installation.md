@@ -110,6 +110,7 @@ Imaget er én binær med en kommandotabell; kommandoen er det første argumentet
 | `server` | Serverer bare: migrerer aldri og kjører aldri bakgrunnsjobber, uansett `WORKERS_IN_PROCESS`. | En flåte av tilstandsløse replikaer bak en lastbalanserer, der migreringer og bakgrunnsjobber kjøres et annet sted. |
 | `worker` | Bakgrunnsjobbene til hver aktivert modul, pluss `/health/live` og `/health/ready` for prober. | Én dedikert worker-container når API-et skaleres horisontalt. |
 | `migrate` | Kjører migreringer og avslutter med 0 eller 1. | Engangsjobben før applikasjonen starter, ved første oppstart og ved hver oppgradering. |
+| `modules --json` | Skriver ut forretningsmodulene `MODULES` kan nevne og modulene hver av dem krever ved siden av seg, som `{"modules":[{"key":"energy","requires":["customers"]},…]}`, og avslutter med 0. Den leser ingen miljøvariabler og konstruerer ingenting. | Å sjekke hvilke moduler en versjon kjenner før du skriver dens `MODULES`, fra et skript eller en operatør. |
 | `healthcheck` | Prober denne containerens eget `/health/ready` på `127.0.0.1:$PORT` og avslutter med 0 eller 1. Den konstruerer ingenting, så en probe feiler aldri på en feil `DATABASE_URL` — å rapportere det er `/health/ready` sin jobb. | Containerens `HEALTHCHECK` og enhver liveness- eller readiness-probe. |
 
 `seed` finnes også for lokal utvikling og demomiljøer (`APP_ENV=development`; den
@@ -277,9 +278,23 @@ faktisk venter — når aldri `api` i det hele tatt: `vantigo-migrate` kjører f
 eierrollen, og `vantigo` sin `depends_on: condition: service_completed_successfully`
 hindrer API-containeren i å starte før den lykkes, oppgraderinger inkludert.
 
+Tre funksjoner serveren kaller mens den kjører, vedlikeholder partisjonerte tabeller, og å
+opprette eller slette en partisjon er DDL som kjøretidsrollen ikke får kjøre:
+`energy.ensure_consumption_partition`, som hver skriving av forbruk kaller først, og
+`identity.ensure_api_requests_partition` og `identity.drop_api_requests_before`, som
+bakgrunnsjobben `identity.api-keys` kaller for å holde dagene i API-ets forespørselslogg. De
+er `SECURITY DEFINER`: de kjører som eierrollen som migrerte dem, med fast `search_path`, og
+de godtar bare en dato innenfor et fast intervall, så det meste de lar en kaller gjøre er å
+opprette en partisjon av sin egen tabell eller slette forespørselsloggens gamle dager.
+`EXECUTE` på dem er trukket tilbake fra `PUBLIC`. Migreringen som gjorde dem slik, gir den
+til hver rolle som allerede kunne skrive til disse tabellene — kjøretidsrollen, når den fantes
+før migreringene kjørte, slik init-skriptet oppretter den. En kjøretidsrolle som opprettes
+etterpå, trenger rettigheten gitt for hånd, som nedenfor; uten den feiler Energys skriving av
+forbruk med `permission denied for function`, og forespørselsloggen får ikke nye dager.
+
 Rollesetningene kjøres fra PostgreSQL sitt init-skript, som bare kjører når volumet
 `postgres-data` opprettes. En eksisterende installasjon kan legge til rollen for hånd
-(juster skjemalistene så de stemmer med `MODULES` som er aktivert i din installasjon):
+(hvert skjema migreres uansett hva `MODULES` aktiverer, så listene nevner dem alle):
 
 ```sql
 \connect vantigo
@@ -295,15 +310,20 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT SELECT, INSERT, UPDATE, DELETE
 ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO "vantigo_app";
 
 -- Standardrettigheter dekker bare objekter som opprettes etterpå; gi rettigheter
--- på skjemaene de aktiverte modulene allerede har opprettet (legg til/fjern
--- skjemaer så de stemmer med MODULES aktivert i din installasjon).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+-- på skjemaene migreringene allerede har opprettet, hvert av dem uansett hva
+-- MODULES aktiverer.
+GRANT USAGE ON SCHEMA platform, identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, meta, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA platform, identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, meta, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA platform, identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, meta, assistant TO "vantigo_app";
 
 -- Versjonstabellen til goose, som `server` og `worker` leser før de starter
 -- (de venter på skjemaet); uten den stopper de med en tilgangsfeil.
 GRANT SELECT ON public.goose_db_version TO "vantigo_app";
+
+-- Partisjonsvedlikeholdet serveren kjører som eieren (se ovenfor).
+GRANT EXECUTE ON FUNCTION energy.ensure_consumption_partition(date) TO "vantigo_app";
+GRANT EXECUTE ON FUNCTION identity.ensure_api_requests_partition(date) TO "vantigo_app";
+GRANT EXECUTE ON FUNCTION identity.drop_api_requests_before(date) TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering

@@ -2044,7 +2044,8 @@ staff`). Inventory keeps stock of the catalog's variants and reads and locks the
 through `contracts.ProductCatalog`, so `inventory` without `products` is rejected
 (`inventory requires products`), and its `Mount` refuses a nil catalog besides. Assistant requires nobody: it reaches the other modules only through the dispatcher, which
 lists whichever are enabled, and it is of use only while `AI_PROVIDER` is set. A module that starts requiring
-another module's contract adds its own check in `internal/config`.
+another module's contract adds its row to `moduleRequires` in `internal/config`, the one
+table startup checks and `vantigo modules --json` prints.
 
 A contract can also be **optional**. `contracts.ProductCatalog` is the first:
 Projects prices its billing lines through it, but when `products` is disabled

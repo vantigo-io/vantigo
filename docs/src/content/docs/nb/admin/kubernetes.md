@@ -32,6 +32,11 @@ innstilling; denne siden legger til det som er særegent for en klynge.
   [Databaseroller](/nb/admin/installation/#databaseroller)). Uten den stopper en pod med
   `startup failed` og en feilmelding som nevner denne tildelingen, i stedet for å vente i
   det uendelige.
+- Kjørerollen kan kjøre de tre funksjonene for partisjonsvedlikehold, som kjører som
+  eieren. Migreringen gir den rettigheten når rollen finnes før første `migrate`; en rolle
+  som opprettes etterpå, trenger de tre `GRANT EXECUTE`-setningene i
+  [Databaseroller](/nb/admin/installation/#databaseroller), ellers feiler Energys skriving
+  av forbruk, og API-ets forespørselslogg får ingen nye dager.
 
 ## Probene på management-porten
 

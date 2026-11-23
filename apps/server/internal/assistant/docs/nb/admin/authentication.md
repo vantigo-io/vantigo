@@ -1123,7 +1123,10 @@ de neste 6 dagene, flytter rader som havnet i DEFAULT, til en partisjon for dage
 det som er eldre enn de 30 dagene som beholdes, i dag medregnet
 ([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Hver dag lages i en egen transaksjon som
 venter høyst 5 sekunder (`lock_timeout`) på tabellens lås; en dag som ikke får den, logges og
-lages ved neste syklus, og varslene sendes uansett. Tabellen har ingen
+lages ved neste syklus, og varslene sendes uansett. Å lage og slette en dags partisjon er DDL,
+som kjøretidsrollen serveren kobler til som, ikke får kjøre: arbeideren kaller to funksjoner som
+kjører som skjemaets eier, og kjøretidsrollen trenger `EXECUTE` på dem
+([Databaseroller](/nb/admin/installation/#databaseroller)). Tabellen har ingen
 fremmednøkkel til `api_keys`: en nøkkels rad slettes 90 dager etter at den utløp, og loggradene
 eldes ut av seg selv.
 
