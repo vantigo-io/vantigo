@@ -117,7 +117,7 @@ func TestWaitForSchema_HonoursTheContext(t *testing.T) {
 // waiting: SchemaVersion says so, naming the grant, and WaitForSchema stops
 // at once instead of polling forever.
 func TestSchemaVersion_APermissionErrorIsFatal(t *testing.T) {
-	_, url := testdb.Migrated(t)
+	url := testdb.MigratedURL(t) // the owner's: it makes a role
 	ctx := context.Background()
 	admin, err := pgx.Connect(ctx, url)
 	if err != nil {

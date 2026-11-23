@@ -50,7 +50,7 @@ func (h *Harness) Integration(t testing.TB, name string, permissions ...string) 
 	h.Exec(t, `INSERT INTO identity.integrations (user_id, name, created_at, version) VALUES ($1, $2, $3, $4)`, id, name, now, uuid.New())
 	if len(permissions) > 0 {
 		role := h.seedRole(t, permissions)
-		if err := pgx.BeginFunc(context.Background(), h.pool, func(tx pgx.Tx) error {
+		if err := pgx.BeginFunc(context.Background(), h.fixtures, func(tx pgx.Tx) error {
 			return GrantIntegrationRoles(context.Background(), tx, id, role)
 		}); err != nil {
 			t.Fatal(err)

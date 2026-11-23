@@ -596,7 +596,9 @@ func TestDatabase_NeverTruncatesTheBooks(t *testing.T) {
 	}
 	for _, table := range []string{"vouchers", "postings", "attachments", "lock_events"} {
 		_, err := l.pool.Exec(context.Background(), "TRUNCATE accounting."+table+" CASCADE")
-		if err == nil || !strings.Contains(err.Error(), "never changed or deleted") {
+		// The runtime role (TEST_DATABASE_ROLE=runtime) may not truncate at
+		// all, and is refused before the trigger is reached.
+		if err == nil || !strings.Contains(err.Error(), "never changed or deleted") && !strings.Contains(err.Error(), "SQLSTATE 42501") {
 			t.Errorf("TRUNCATE %s: %v", table, err)
 		}
 	}

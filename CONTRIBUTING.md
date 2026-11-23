@@ -455,6 +455,22 @@ arithmetic that made the old one-migration-per-test design fail with
 `out of shared memory (SQLSTATE 53200)` on many-core hosts. Pinning to four
 CPUs matches CI and keeps the run's PostgreSQL footprint predictable.
 
+**CI runs the server as the runtime role.** It sets `TEST_DATABASE_ROLE=runtime`, so
+every `testdb.Migrated` pool and every `modtest` installation connects as
+`vantigo_test_runtime`, made the way the installation guide makes `vantigo_app`: DML
+only, owning nothing, allowed to create nothing. A harness's fixtures (`Exec`, `One`,
+`Pool`) stay the owner's, so a test may inject a fault with a trigger of its own. A
+query, a function or a worker that needs DDL at runtime fails there; run the same way
+locally with:
+
+```bash
+cd apps/server && TEST_DATABASE_ROLE=runtime go test -count=1 ./internal/energy/...
+```
+
+A function that must run DDL for the server (partition upkeep) is `SECURITY DEFINER`
+with a pinned `search_path` and checked arguments, its `EXECUTE` revoked from `PUBLIC`
+and granted as `00220_energy_consumption_partition_definer.sql` does.
+
 The migration tests in `internal/db` follow the same rule. A test that proves
 its migration applies, rolls back and re-applies starts from
 `testdb.MigratedURL` — a template copy already at head — and only rolls down

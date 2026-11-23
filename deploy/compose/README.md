@@ -164,13 +164,17 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT SELECT, INSERT, UPDATE, DELETE
 ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO "vantigo_app";
 
 -- Default privileges only cover objects created afterwards; grant on the
--- schemas the enabled modules already created (add/remove schemas to match
--- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, assistant TO "vantigo_app";
+-- schemas the migrations already created, every one of them whatever
+-- MODULES enables.
+GRANT USAGE ON SCHEMA platform, identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, meta, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA platform, identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, meta, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA platform, identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, meta, assistant TO "vantigo_app";
 -- goose's version table, which `server` and `worker` read before they start.
 GRANT SELECT ON public.goose_db_version TO "vantigo_app";
+-- The partition upkeep the server runs as the owner (SECURITY DEFINER).
+GRANT EXECUTE ON FUNCTION energy.ensure_consumption_partition(date) TO "vantigo_app";
+GRANT EXECUTE ON FUNCTION identity.ensure_api_requests_partition(date) TO "vantigo_app";
+GRANT EXECUTE ON FUNCTION identity.drop_api_requests_before(date) TO "vantigo_app";
 ```
 
 ## Background workers

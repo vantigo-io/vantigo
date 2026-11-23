@@ -104,6 +104,7 @@ type harness struct {
 // composes beside identity, and the fake OIDC provider it routes to.
 type harnessSetup struct {
 	env          map[string]string
+	runtimeRole  bool
 	permissions  []contracts.Permission
 	aiTasks      []contracts.AITask
 	tracer       pgx.QueryTracer
@@ -161,6 +162,13 @@ func tracedPool(t testing.TB, databaseURL string, tracer pgx.QueryTracer) *pgxpo
 // harnessOption adjusts the harness's setup.
 type harnessOption func(*harnessSetup)
 
+// withRuntimeRole connects the installation as testdb.RuntimeRole, the
+// least-privilege role the installation guide has the server run as
+// (modtest.WithRuntimeRole).
+func withRuntimeRole() harnessOption {
+	return func(s *harnessSetup) { s.runtimeRole = true }
+}
+
 // withEnv sets one environment variable over the harness's development
 // defaults.
 func withEnv(k, v string) harnessOption {
@@ -201,8 +209,6 @@ func catalogModule(name string, perms []contracts.Permission, tasks ...contracts
 
 func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	t.Helper()
-	pool, databaseURL := testdb.Migrated(t)
-	t.Cleanup(func() { assertEmployeeNumberKeys(t, pool) })
 
 	// The installation answers as harnessOrigin, a real domain: a WebAuthn
 	// relying party ID is the APP_URL host and may not be an IP address, so
@@ -217,7 +223,6 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	// IP-keyed limit is per client.
 	env := map[string]string{
 		"APP_ENV":             "development",
-		"DATABASE_URL":        databaseURL,
 		"APP_URL":             origin,
 		"APP_SECRET":          "identity-harness-app-secret-0123456789abcdef",
 		"TRUSTED_PROXY_HOPS":  "1",
@@ -227,6 +232,18 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	for _, o := range opts {
 		o(setup)
 	}
+	// pool is the fixtures', the owner's; the installation connects as the
+	// runtime role when asked to (modtest.WithRuntimeRole).
+	var pool, installation *pgxpool.Pool
+	var databaseURL string
+	if setup.runtimeRole || testdb.RuntimeRequested() {
+		installation, databaseURL, pool = testdb.MigratedAsRuntimeWithOwner(t)
+	} else {
+		pool, databaseURL = testdb.Migrated(t)
+		installation = pool
+	}
+	t.Cleanup(func() { assertEmployeeNumberKeys(t, pool) })
+	env["DATABASE_URL"] = databaseURL
 	cfg, err := config.Load(env)
 	if err != nil {
 		t.Fatalf("harness: %v", err)
@@ -238,7 +255,6 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 
 	h := &harness{pool: pool, cfg: cfg, mail: &mail.Fake{}, clock: start, log: &syncBuffer{}}
 	logger := slog.New(slog.NewJSONHandler(h.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	installation := pool
 	if setup.tracer != nil {
 		installation = tracedPool(t, databaseURL, setup.tracer)
 	}

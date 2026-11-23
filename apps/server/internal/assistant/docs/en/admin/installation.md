@@ -273,9 +273,22 @@ at all: `vantigo-migrate` runs first, under the owner role, and `vantigo`'s
 `depends_on: condition: service_completed_successfully` keeps the API container from
 starting until it succeeds, upgrades included.
 
+Three functions the server calls while it runs keep partitioned tables, and making or
+dropping a partition is DDL the runtime role may not run: `energy.ensure_consumption_partition`,
+which every consumption write calls first, and `identity.ensure_api_requests_partition` and
+`identity.drop_api_requests_before`, which the `identity.api-keys` worker calls to keep the
+API request log's days. They are `SECURITY DEFINER`: they run as the owner role that
+migrated them, with `search_path` pinned, and they accept only a date in a fixed range, so
+the most they let a caller do is make a partition of their own table or drop the request
+log's old days. `EXECUTE` on them is revoked from `PUBLIC`. The migration that made them so
+grants it to every role that could already write those tables — the runtime role, when it
+existed before the migrations ran, as the init script makes it. A runtime role made
+afterwards needs the grant by hand, as below; without it Energy's consumption writes fail
+with `permission denied for function`, and the request log stops getting new days.
+
 The role statements run from the PostgreSQL init script, which executes only when the
 `postgres-data` volume is created. An existing installation can add the role by hand
-(adjust the schema lists to match the `MODULES` enabled in your installation):
+(every schema is migrated whatever `MODULES` enables, so the lists name them all):
 
 ```sql
 \connect vantigo
@@ -291,15 +304,20 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT SELECT, INSERT, UPDATE, DELETE
 ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO "vantigo_app";
 
 -- Default privileges only cover objects created afterwards; grant on the
--- schemas the enabled modules already created (add/remove schemas to match
--- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+-- schemas the migrations already created, every one of them whatever
+-- MODULES enables.
+GRANT USAGE ON SCHEMA platform, identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, meta, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA platform, identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, meta, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA platform, identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google, meta, assistant TO "vantigo_app";
 
 -- goose's version table, which `server` and `worker` read before they start
 -- (they wait for the schema); without it they stop with a permission error.
 GRANT SELECT ON public.goose_db_version TO "vantigo_app";
+
+-- The partition upkeep the server runs as the owner (see above).
+GRANT EXECUTE ON FUNCTION energy.ensure_consumption_partition(date) TO "vantigo_app";
+GRANT EXECUTE ON FUNCTION identity.ensure_api_requests_partition(date) TO "vantigo_app";
+GRANT EXECUTE ON FUNCTION identity.drop_api_requests_before(date) TO "vantigo_app";
 ```
 
 ## Background workers and scaling

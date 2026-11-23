@@ -103,7 +103,10 @@ const indexHTML = `<!doctype html><html><head><title>Vantigo</title>` +
 // harnesses except the caller's Recorder, which is safe for concurrent use, so
 // tests using one can run in parallel.
 type Harness struct {
-	pool     *pgxpool.Pool
+	pool *pgxpool.Pool
+	// fixtures is the pool Exec, One and Pool answer with: pool itself, or
+	// the owner's beside the runtime role's (WithRuntimeRole).
+	fixtures *pgxpool.Pool
 	deps     module.Deps
 	recorder *contracttest.Recorder
 	srv      *httptest.Server
@@ -206,6 +209,7 @@ type setup struct {
 	objectStore       storage.ObjectStore
 	peppolLookup      func(ctx context.Context, participant string) (peppol.Result, error)
 	poolMaxConns      int32
+	runtimeRole       bool
 	spans             *tracetest.SpanRecorder
 	accounts          contracts.AccountProvisioning
 	aiModels          contracts.AIModels
@@ -850,6 +854,15 @@ func WithPoolMaxConns(n int32) Option {
 	return func(s *setup) { s.poolMaxConns = n }
 }
 
+// WithRuntimeRole connects the installation as testdb.RuntimeRole: the least-privilege role the installation guide has
+// the server run as, which owns nothing and may create nothing. It is for a
+// test that proves a path works without the owner's privileges — partition
+// upkeep above all, which once ran DDL as whatever role the server had.
+// TEST_DATABASE_ROLE=runtime does the same for every harness of a run.
+func WithRuntimeRole() Option {
+	return func(s *setup) { s.runtimeRole = true }
+}
+
 // WithSpanRecorder records every span the installation makes into rec: the
 // server span of each API request, as telemetry.HTTPHandler makes it, and a
 // span per query on a pool of the installation's own, as db.Open's tracer
@@ -989,14 +1002,11 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 // module or its contract.
 func New(t *testing.T, opts ...Option) *Harness {
 	t.Helper()
-	pool, databaseURL := testdb.Migrated(t)
-
 	// httptest's peer is always 127.0.0.1, the one trusted proxy, so each
 	// client's X-Forwarded-For address becomes its httpx.ClientIP and every
 	// IP-keyed limit is per client.
 	env := map[string]string{
 		"APP_ENV":             "development",
-		"DATABASE_URL":        databaseURL,
 		"APP_URL":             harnessOrigin,
 		"APP_SECRET":          "modtest-harness-app-secret-0123456789abcdef",
 		"TRUSTED_PROXY_HOPS":  "1",
@@ -1012,6 +1022,18 @@ func New(t *testing.T, opts ...Option) *Harness {
 	if len(s.modules) == 0 {
 		t.Fatal("modtest: no module under test; pass modtest.WithModule(m)")
 	}
+	// The installation connects as the runtime role when asked to; the
+	// fixtures (Exec, One, Pool) stay the owner's, since a fixture may inject
+	// a fault with DDL of its own and is never what a test is about.
+	var pool, fixtures *pgxpool.Pool
+	var databaseURL string
+	if s.runtimeRole || testdb.RuntimeRequested() {
+		pool, databaseURL, fixtures = testdb.MigratedAsRuntimeWithOwner(t)
+	} else {
+		pool, databaseURL = testdb.Migrated(t)
+		fixtures = pool
+	}
+	env["DATABASE_URL"] = databaseURL
 
 	var tracer *sdktrace.TracerProvider
 	if s.spans != nil {
@@ -1056,7 +1078,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		t.Fatalf("modtest: %v", err)
 	}
 
-	h := &Harness{pool: pool, recorder: s.recorder, clock: Start, log: &syncBuffer{}, notices: &noticeRecorder{}}
+	h := &Harness{pool: pool, fixtures: fixtures, recorder: s.recorder, clock: Start, log: &syncBuffer{}, notices: &noticeRecorder{}}
 	logger := slog.New(slog.NewJSONHandler(h.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	// The limiter runs on the harness clock too, so a throttle window turns
 	// over when a test advances the clock and never mid-test on the wall clock.
@@ -1293,7 +1315,8 @@ func (h *Harness) DepsOn(pool *pgxpool.Pool) module.Deps {
 
 // Pool is the harness's own pool on the installation's database, for a fixture
 // that Exec, Count and One cannot express.
-func (h *Harness) Pool() *pgxpool.Pool { return h.pool }
+// Under WithRuntimeRole it is the owner's.
+func (h *Harness) Pool() *pgxpool.Pool { return h.fixtures }
 
 // fixtureTimeout bounds every fixture query. Without it a pool with no free
 // connection blocks in Acquire for as long as the test binary runs, which
@@ -1305,7 +1328,7 @@ func (h *Harness) Exec(t testing.TB, sql string, args ...any) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), fixtureTimeout)
 	defer cancel()
-	if _, err := h.pool.Exec(ctx, sql, args...); err != nil {
+	if _, err := h.fixtures.Exec(ctx, sql, args...); err != nil {
 		t.Fatalf("modtest: %s: %v", sql, err)
 	}
 }
@@ -1337,7 +1360,7 @@ func One[T any](t testing.TB, h *Harness, sql string, args ...any) T {
 	var v T
 	ctx, cancel := context.WithTimeout(context.Background(), fixtureTimeout)
 	defer cancel()
-	if err := h.pool.QueryRow(ctx, sql, args...).Scan(&v); err != nil {
+	if err := h.fixtures.QueryRow(ctx, sql, args...).Scan(&v); err != nil {
 		t.Fatalf("modtest: %s: %v", sql, err)
 	}
 	return v

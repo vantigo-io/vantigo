@@ -30,6 +30,11 @@ reference for every setting; this page adds what is particular to a cluster.
   `GRANT SELECT ON public.goose_db_version TO "vantigo_app";` (with your role's name;
   [Database roles](/en/admin/installation/#database-roles)). Without it a pod stops with
   `startup failed` and an error that names this grant, rather than waiting forever.
+- The runtime role may execute the three partition-upkeep functions, which run as the
+  owner. The migration grants it when the role exists before the first `migrate`; a role
+  made afterwards needs the three `GRANT EXECUTE` statements in [Database
+  roles](/en/admin/installation/#database-roles), or Energy's consumption writes fail and
+  the API request log gets no new days.
 
 ## Probes on the management port
 

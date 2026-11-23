@@ -160,7 +160,21 @@ func (h *harness) partitionExists(t *testing.T, name string) bool {
 // older than 30, from DEFAULT too.
 func TestAPIRequests_TheWorkerKeepsThePartitions(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
+	workerKeepsThePartitions(t, newHarness(t))
+}
+
+// TestAPIRequests_TheWorkerKeepsThePartitionsAsTheRuntimeRole is the same
+// upkeep with the installation connected as the least-privilege role the
+// installation guide prescribes, which owns no table and may create none:
+// the partition functions are SECURITY DEFINER (00221) and do the DDL as
+// their owner.
+func TestAPIRequests_TheWorkerKeepsThePartitionsAsTheRuntimeRole(t *testing.T) {
+	t.Parallel()
+	workerKeepsThePartitions(t, newHarness(t, withRuntimeRole()))
+}
+
+func workerKeepsThePartitions(t *testing.T, h *harness) {
+	t.Helper()
 	w := apiKeysWorker(h)
 	if w == nil {
 		t.Fatal("no identity.api-keys worker")

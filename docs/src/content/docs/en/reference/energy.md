@@ -64,7 +64,12 @@ periods, with the point's address and the monthly consumption inside each).
 - **Consumption interval** — `start`, `end` (after `start`), `quantityKwh` (≥ 0),
   `quality` (`Measured`, `Estimated`, `Corrected` or `Manual`) and `source` (`Manual`
   for a manual reading, `Import` for a consumption import, `Elhub`), in a table
-  partitioned by month.
+  partitioned by month. Every write first calls `energy.ensure_consumption_partition`
+  for the month it lands in, which makes the month's partition when it is missing. The
+  function is `SECURITY DEFINER`, so it makes the partition as the schema's owner while
+  the server runs as the least-privilege runtime role; it refuses a month outside
+  1990–2099, and only roles granted `EXECUTE` may call it ([Database
+  roles](/en/admin/installation/#database-roles)).
 
 ## Supply periods and the no-overlap rule
 

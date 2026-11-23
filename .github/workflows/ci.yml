@@ -518,6 +518,13 @@ jobs:
           --shm-size 1g
     env:
       TEST_DATABASE_URL: postgres://vantigo:vantigo@127.0.0.1:5432/vantigo_test?sslmode=disable
+      # Every test connects the server as the least-privilege runtime role the
+      # installation guide prescribes (internal/testdb/runtime.go), its
+      # fixtures as the owner. Partition upkeep once ran DDL as whatever role
+      # the server had, and only an installation run as the owner worked;
+      # this catches the next query that needs more than the runtime role
+      # holds, at no cost beyond the run itself.
+      TEST_DATABASE_ROLE: runtime
     steps:
       - name: 🛎️ Checkout codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
