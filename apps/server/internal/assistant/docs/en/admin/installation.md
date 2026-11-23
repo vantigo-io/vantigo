@@ -110,6 +110,7 @@ The image is one binary with a dispatch table; the command is the first argument
 | `server` | Serves only: never migrates and never runs workers, regardless of `WORKERS_IN_PROCESS`. | A fleet of stateless replicas behind a load balancer, with migrations and workers run elsewhere. |
 | `worker` | Every enabled module's background workers, plus `/health/live` and `/health/ready` for probes. | One dedicated worker container when the API is scaled horizontally. |
 | `migrate` | Applies migrations and exits 0 or 1. | The one-shot job before the application starts, on first start and on every upgrade. |
+| `modules --json` | Prints the business modules `MODULES` may name and the modules each requires beside it, as `{"modules":[{"key":"energy","requires":["customers"]},…]}`, and exits 0. It reads no environment and constructs nothing. | Checking which modules a release knows before writing its `MODULES`, from a script or an operator. |
 | `healthcheck` | Probes this container's own `/health/ready` on `127.0.0.1:$PORT` and exits 0 or 1. It constructs nothing, so a probe never fails on a bad `DATABASE_URL` — reporting that is `/health/ready`'s job. | The container `HEALTHCHECK` and any liveness or readiness probe. |
 
 `seed` also exists for local development and demo environments (`APP_ENV=development`; it

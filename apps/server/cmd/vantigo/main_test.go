@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -74,6 +75,11 @@ func TestParseArgs(t *testing.T) {
 		"openapi contract":     modeUsage,
 		"openapi integrator x": modeUsage,
 
+		"modules --json":   modeModules,
+		"modules":          modeUsage,
+		"modules --yaml":   modeUsage,
+		"modules --json x": modeUsage,
+
 		"storage copy":                 modeStorageCopy,
 		"storage copy --fs-root /data": modeStorageCopy,
 		"storage":                      modeUsage,
@@ -109,6 +115,52 @@ func TestOpenAPIIntegrator(t *testing.T) {
 	}
 	if doc.Paths.Find("/api/v1/identity/account") != nil {
 		t.Error("the document holds identity's own account, which no key may call")
+	}
+}
+
+// TestModulesJSON: with no environment at all, the command names every
+// module MODULES may hold, identity not among them, and what each requires,
+// and a module MODULES with exactly that list loads.
+func TestModulesJSON(t *testing.T) {
+	setEnv(t) // blanks DATABASE_URL and APP_URL: the command must not need them
+	code, stdout, stderr := runCapture("modules", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	var got struct {
+		Modules []struct {
+			Key      string   `json:"key"`
+			Requires []string `json:"requires"`
+		} `json:"modules"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode %s: %v", stdout, err)
+	}
+	keys := map[string][]string{}
+	for _, m := range got.Modules {
+		if m.Requires == nil {
+			t.Errorf("%s: requires is null, want a list", m.Key)
+		}
+		keys[m.Key] = m.Requires
+	}
+	if _, ok := keys["identity"]; ok {
+		t.Error("identity is listed; it is always mounted and never in MODULES")
+	}
+	if r := keys["energy"]; len(r) != 1 || r[0] != "customers" {
+		t.Errorf("energy requires %v, want [customers]", r)
+	}
+	if r := keys["purchasing"]; len(r) != 3 {
+		t.Errorf("purchasing requires %v, want accounting, inventory and products", r)
+	}
+	if r, ok := keys["customers"]; !ok || len(r) != 0 {
+		t.Errorf("customers: listed %v, requires %v; want listed, requiring nothing", ok, r)
+	}
+	for key, requires := range keys {
+		for _, r := range requires {
+			if _, ok := keys[r]; !ok {
+				t.Errorf("%s requires %s, which is not listed", key, r)
+			}
+		}
 	}
 }
 

@@ -2703,61 +2703,67 @@ func modules(p *problems, env map[string]string) []string {
 		out = append(out, name)
 	}
 
-	if slices.Contains(out, "energy") && !slices.Contains(out, "customers") {
-		p.add("MODULES", "energy requires customers")
-	}
-	if slices.Contains(out, "communications") && !slices.Contains(out, "customers") {
-		p.add("MODULES", "communications requires customers")
-	}
-	if slices.Contains(out, "projects") && !slices.Contains(out, "customers") {
-		p.add("MODULES", "projects requires customers")
-	}
-	if slices.Contains(out, "time") && !slices.Contains(out, "projects") {
-		p.add("MODULES", "time requires projects")
-	}
-	if slices.Contains(out, "invoices") && !slices.Contains(out, "customers") {
-		p.add("MODULES", "invoices requires customers")
-	}
-	if slices.Contains(out, "entra") && !slices.Contains(out, "staff") {
-		p.add("MODULES", "entra requires staff")
-	}
-	if slices.Contains(out, "google") && !slices.Contains(out, "staff") {
-		p.add("MODULES", "google requires staff")
-	}
-	if slices.Contains(out, "meta") && !slices.Contains(out, "communications") {
-		p.add("MODULES", "meta requires communications")
-	}
-	if slices.Contains(out, "agents") && !slices.Contains(out, "communications") {
-		p.add("MODULES", "agents requires communications")
-	}
-	if slices.Contains(out, "planning") && !slices.Contains(out, "projects") {
-		p.add("MODULES", "planning requires projects")
-	}
-	if slices.Contains(out, "planning") && !slices.Contains(out, "staff") {
-		p.add("MODULES", "planning requires staff")
-	}
-	if slices.Contains(out, "inventory") && !slices.Contains(out, "products") {
-		p.add("MODULES", "inventory requires products")
-	}
-	for _, needed := range []string{"products", "customers", "invoices"} {
-		if slices.Contains(out, "orders") && !slices.Contains(out, needed) {
-			p.add("MODULES", "orders requires %s", needed)
+	for _, rule := range moduleRequires {
+		if !slices.Contains(out, rule.module) {
+			continue
 		}
-	}
-	for _, needed := range []string{"products", "inventory"} {
-		if slices.Contains(out, "manufacturing") && !slices.Contains(out, needed) {
-			p.add("MODULES", "manufacturing requires %s", needed)
-		}
-	}
-	if slices.Contains(out, "accounting") && !slices.Contains(out, "invoices") {
-		p.add("MODULES", "accounting requires invoices")
-	}
-	for _, needed := range []string{"accounting", "inventory", "products"} {
-		if slices.Contains(out, "purchasing") && !slices.Contains(out, needed) {
-			p.add("MODULES", "purchasing requires %s", needed)
+		for _, needed := range rule.requires {
+			if !slices.Contains(out, needed) {
+				p.add("MODULES", "%s requires %s", rule.module, needed)
+			}
 		}
 	}
 
+	return out
+}
+
+// moduleRequires is the rule modules enforces, in the order its problems are
+// reported: each module, then the modules MODULES must list beside it. Why
+// each is required is modules' own comment. A module absent here requires
+// nothing.
+var moduleRequires = []struct {
+	module   string
+	requires []string
+}{
+	{"energy", []string{"customers"}},
+	{"communications", []string{"customers"}},
+	{"projects", []string{"customers"}},
+	{"time", []string{"projects"}},
+	{"invoices", []string{"customers"}},
+	{"entra", []string{"staff"}},
+	{"google", []string{"staff"}},
+	{"meta", []string{"communications"}},
+	{"agents", []string{"communications"}},
+	{"planning", []string{"projects", "staff"}},
+	{"inventory", []string{"products"}},
+	{"orders", []string{"products", "customers", "invoices"}},
+	{"manufacturing", []string{"products", "inventory"}},
+	{"accounting", []string{"invoices"}},
+	{"purchasing", []string{"accounting", "inventory", "products"}},
+}
+
+// ModuleRule is one business module MODULES may name, and the modules it
+// requires beside it.
+type ModuleRule struct {
+	Key      string   `json:"key"`
+	Requires []string `json:"requires"`
+}
+
+// ModuleRules answers every business module MODULES may name, in the
+// binary's order, with the modules each requires: the rule modules enforces,
+// read from no environment. A module that requires nothing has an empty
+// Requires. Identity is always mounted and is not among them.
+func ModuleRules() []ModuleRule {
+	out := make([]ModuleRule, 0, len(knownModules))
+	for _, key := range knownModules {
+		rule := ModuleRule{Key: key, Requires: []string{}}
+		for _, r := range moduleRequires {
+			if r.module == key {
+				rule.Requires = append(rule.Requires, r.requires...)
+			}
+		}
+		out = append(out, rule)
+	}
 	return out
 }
 

@@ -84,7 +84,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
-const usage = "usage: vantigo <api|server|worker|migrate|seed|healthcheck|storage copy|openapi integrator>"
+const usage = "usage: vantigo <api|server|worker|migrate|seed|healthcheck|storage copy|openapi integrator|modules --json>"
 
 type mode int
 
@@ -98,6 +98,7 @@ const (
 	modeHealthcheck
 	modeOpenAPIIntegrator
 	modeStorageCopy
+	modeModules
 )
 
 // readHeaderTimeout is the slowloris brake. There is deliberately no
@@ -145,6 +146,11 @@ func parseArgs(args []string) (mode, string) {
 			return modeOpenAPIIntegrator, args[0]
 		}
 		return modeUsage, strings.Join(args, " ")
+	case "modules":
+		if len(args) == 2 && args[1] == "--json" {
+			return modeModules, args[0]
+		}
+		return modeUsage, strings.Join(args, " ")
 	default:
 		return modeUsage, args[0]
 	}
@@ -170,6 +176,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		// Constructs nothing either: CI runs it with no database and no
 		// configuration, and the document depends on neither.
 		return openAPIIntegrator(stdout, stderr)
+	case modeModules:
+		// Reads no environment either: an operator asks it which MODULES a
+		// release knows, and what each requires, before it configures one.
+		return modulesJSON(stdout, stderr)
 	}
 
 	cfg, err := config.FromOS()
@@ -257,6 +267,24 @@ func openAPIIntegrator(stdout, stderr io.Writer) int {
 	}
 	out.WriteByte('\n')
 	if _, err := out.WriteTo(stdout); err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	return 0
+}
+
+// modulesJSON prints the business modules MODULES may name and the modules
+// each requires beside it (config.ModuleRules), as
+// {"modules":[{"key":"energy","requires":["customers"]},...]}.
+func modulesJSON(stdout, stderr io.Writer) int {
+	body, err := json.MarshalIndent(struct {
+		Modules []config.ModuleRule `json:"modules"`
+	}{config.ModuleRules()}, "", "  ")
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if _, err := stdout.Write(append(body, '\n')); err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}

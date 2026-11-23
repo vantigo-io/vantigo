@@ -110,6 +110,7 @@ Imaget er én binær med en kommandotabell; kommandoen er det første argumentet
 | `server` | Serverer bare: migrerer aldri og kjører aldri bakgrunnsjobber, uansett `WORKERS_IN_PROCESS`. | En flåte av tilstandsløse replikaer bak en lastbalanserer, der migreringer og bakgrunnsjobber kjøres et annet sted. |
 | `worker` | Bakgrunnsjobbene til hver aktivert modul, pluss `/health/live` og `/health/ready` for prober. | Én dedikert worker-container når API-et skaleres horisontalt. |
 | `migrate` | Kjører migreringer og avslutter med 0 eller 1. | Engangsjobben før applikasjonen starter, ved første oppstart og ved hver oppgradering. |
+| `modules --json` | Skriver ut forretningsmodulene `MODULES` kan nevne og modulene hver av dem krever ved siden av seg, som `{"modules":[{"key":"energy","requires":["customers"]},…]}`, og avslutter med 0. Den leser ingen miljøvariabler og konstruerer ingenting. | Å sjekke hvilke moduler en versjon kjenner før du skriver dens `MODULES`, fra et skript eller en operatør. |
 | `healthcheck` | Prober denne containerens eget `/health/ready` på `127.0.0.1:$PORT` og avslutter med 0 eller 1. Den konstruerer ingenting, så en probe feiler aldri på en feil `DATABASE_URL` — å rapportere det er `/health/ready` sin jobb. | Containerens `HEALTHCHECK` og enhver liveness- eller readiness-probe. |
 
 `seed` finnes også for lokal utvikling og demomiljøer (`APP_ENV=development`; den
